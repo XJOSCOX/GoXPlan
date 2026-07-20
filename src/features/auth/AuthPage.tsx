@@ -70,27 +70,50 @@ export function AuthPage({ theme, onToggleTheme, onLogin, onSignup }: AuthPagePr
             </div>
           </div>
 
-          <div className="intro-copy">
-            <p>Financial control</p>
-            <h1>Plan your debt payoff with structure.</h1>
-            <span>
-              GoXPlan helps you organize what you owe, decide what needs attention first, and keep your
-              payoff plan moving.
-            </span>
-          </div>
+          <div className="intro-stack">
+            <div className="intro-copy">
+              <p>Financial control</p>
+              <h1>Plan your debt payoff with structure.</h1>
+              <span>
+                GoXPlan helps you organize every balance, decide what deserves attention first, and keep
+                your payoff plan moving with clear priorities.
+              </span>
+            </div>
 
-          <div className="intro-details">
-            <div className="intro-point">
-              <CheckCircle2 size={18} />
-              <span>Organize balances, creditors, notes, and status.</span>
+            <div className="payoff-preview" aria-hidden="true">
+              <div className="preview-row active">
+                <span>Priority 01</span>
+                <strong>Prevent fees</strong>
+                <em>Next action</em>
+              </div>
+              <div className="preview-row">
+                <span>Priority 02</span>
+                <strong>Negotiate</strong>
+                <em>Settlement</em>
+              </div>
+              <div className="preview-row">
+                <span>Priority 03</span>
+                <strong>Track progress</strong>
+                <em>Dashboard</em>
+              </div>
+              <div className="preview-meter">
+                <span />
+              </div>
             </div>
-            <div className="intro-point">
-              <Flag size={18} />
-              <span>Set priorities based on urgency and payoff strategy.</span>
-            </div>
-            <div className="intro-point">
-              <BarChart3 size={18} />
-              <span>Track progress from the dashboard as pages are added.</span>
+
+            <div className="intro-details">
+              <div className="intro-point">
+                <CheckCircle2 size={18} />
+                <span>Organize balances, creditors, notes, and status.</span>
+              </div>
+              <div className="intro-point">
+                <Flag size={18} />
+                <span>Set priorities based on urgency and payoff strategy.</span>
+              </div>
+              <div className="intro-point">
+                <BarChart3 size={18} />
+                <span>Track progress from the dashboard as pages are added.</span>
+              </div>
             </div>
           </div>
         </aside>
@@ -98,13 +121,11 @@ export function AuthPage({ theme, onToggleTheme, onLogin, onSignup }: AuthPagePr
         <section className="auth-card">
           <div className="auth-panel">
             <header className="auth-header">
-              <span>{mode === "signup" ? "New workspace" : "Secure access"}</span>
               <ThemeToggle theme={theme} onToggle={onToggleTheme} />
             </header>
 
             <div className="auth-copy">
-              <p>{mode === "signup" ? "Create account" : "Welcome back"}</p>
-              <h1>{mode === "signup" ? "Create your workspace." : "Login to GoXPlan."}</h1>
+              <h1>{mode === "signup" ? "Create account" : "Login"}</h1>
             </div>
 
             <div className="segmented-control">

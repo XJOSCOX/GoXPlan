@@ -115,10 +115,11 @@ button {
 }
 
 .auth-intro {
-  align-content: space-between;
+  align-content: stretch;
   background:
     linear-gradient(180deg, color-mix(in srgb, var(--surface) 96%, transparent), var(--surface)),
     var(--surface);
+  grid-template-rows: auto 1fr;
   overflow: hidden;
   position: relative;
   height: 100vh;
@@ -199,6 +200,13 @@ button {
   gap: 9px;
 }
 
+.intro-stack {
+  align-self: center;
+  display: grid;
+  gap: clamp(24px, 4vh, 42px);
+  padding-bottom: 2vh;
+}
+
 .intro-copy {
   display: grid;
   gap: 16px;
@@ -215,15 +223,68 @@ button {
 }
 
 .intro-copy h1 {
-  font-size: clamp(52px, 6.2vw, 80px);
+  font-size: clamp(54px, 6.4vw, 86px);
   line-height: 0.96;
-  max-width: 640px;
+  max-width: 690px;
 }
 
 .intro-copy span {
   color: var(--muted);
   font-size: clamp(15px, 1.4vw, 17px);
-  max-width: 520px;
+  max-width: 560px;
+}
+
+.payoff-preview {
+  display: grid;
+  gap: 8px;
+  max-width: 600px;
+}
+
+.preview-row {
+  align-items: center;
+  border: 1px solid color-mix(in srgb, var(--border) 58%, transparent);
+  border-radius: 8px;
+  color: var(--muted);
+  display: grid;
+  gap: 12px;
+  grid-template-columns: 96px 1fr auto;
+  min-height: 54px;
+  padding: 10px 14px;
+}
+
+.preview-row.active {
+  background: color-mix(in srgb, var(--surface-soft) 58%, transparent);
+  border-color: color-mix(in srgb, var(--text) 22%, var(--border));
+}
+
+.preview-row span,
+.preview-row em {
+  font-size: 11px;
+  font-style: normal;
+  font-weight: 850;
+  text-transform: uppercase;
+}
+
+.preview-row strong {
+  color: var(--text);
+  font-size: 14px;
+  font-weight: 850;
+}
+
+.preview-meter {
+  background: color-mix(in srgb, var(--surface-soft) 84%, transparent);
+  border-radius: 999px;
+  height: 8px;
+  margin-top: 8px;
+  overflow: hidden;
+}
+
+.preview-meter span {
+  background: var(--surface-strong);
+  border-radius: inherit;
+  display: block;
+  height: 100%;
+  width: 42%;
 }
 
 .intro-details {
@@ -290,12 +351,16 @@ h2 {
 
 .auth-panel {
   display: grid;
-  gap: 22px;
+  gap: 20px;
   width: min(100%, 430px);
 }
 
+.auth-panel .auth-header {
+  justify-content: flex-end;
+}
+
 .auth-panel .auth-copy h1 {
-  font-size: clamp(34px, 4vw, 46px);
+  font-size: clamp(32px, 3.2vw, 42px);
 }
 
 .segmented-control {
@@ -619,6 +684,14 @@ button:focus-visible {
     font-size: clamp(40px, 4.4vw, 56px);
   }
 
+  .intro-stack {
+    gap: 18px;
+  }
+
+  .preview-row {
+    min-height: 46px;
+    padding: 8px 12px;
+  }
 }
 
 @media (max-width: 1100px) {
@@ -669,6 +742,11 @@ button:focus-visible {
   .intro-copy span {
     max-width: none;
   }
+
+  .intro-stack {
+    align-self: start;
+    padding-bottom: 0;
+  }
 }
 
 @media (max-width: 720px) {
@@ -677,6 +755,10 @@ button:focus-visible {
   .header-actions {
     align-items: stretch;
     flex-direction: column;
+  }
+
+  .auth-panel .auth-header {
+    align-items: flex-end;
   }
 
   .form-grid.two,
@@ -712,12 +794,29 @@ button:focus-visible {
     font-size: clamp(34px, 12vw, 46px);
   }
 
+  .preview-row {
+    gap: 8px;
+    grid-template-columns: 1fr auto;
+  }
+
+  .preview-row span {
+    grid-column: 1 / -1;
+  }
+
+  .preview-row em {
+    font-size: 10px;
+  }
+
+  .intro-details {
+    display: none;
+  }
+
   .segmented-control {
     gap: 4px;
     padding: 4px;
   }
 
   .theme-switch {
-    justify-self: start;
+    align-self: flex-end;
   }
 }
