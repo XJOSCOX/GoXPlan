@@ -111,6 +111,7 @@ button {
   overflow-y: auto;
   padding: clamp(28px, 4vw, 58px);
   place-items: center;
+  position: relative;
   scrollbar-gutter: stable;
 }
 
@@ -123,6 +124,7 @@ button {
   overflow: hidden;
   position: relative;
   height: 100vh;
+  justify-items: end;
   padding: clamp(36px, 5vw, 76px);
 }
 
@@ -141,6 +143,11 @@ button {
 .auth-intro > * {
   position: relative;
   z-index: 1;
+}
+
+.auth-intro .brand,
+.intro-stack {
+  width: min(100%, 680px);
 }
 
 .auth-header,
@@ -203,14 +210,14 @@ button {
 .intro-stack {
   align-self: center;
   display: grid;
-  gap: clamp(24px, 4vh, 42px);
+  gap: clamp(18px, 3vh, 30px);
   padding-bottom: 2vh;
 }
 
 .intro-copy {
   display: grid;
   gap: 16px;
-  max-width: 640px;
+  max-width: 690px;
 }
 
 .intro-copy p {
@@ -223,7 +230,7 @@ button {
 }
 
 .intro-copy h1 {
-  font-size: clamp(54px, 6.4vw, 86px);
+  font-size: clamp(48px, 5.2vw, 72px);
   line-height: 0.96;
   max-width: 690px;
 }
@@ -231,12 +238,12 @@ button {
 .intro-copy span {
   color: var(--muted);
   font-size: clamp(15px, 1.4vw, 17px);
-  max-width: 560px;
+  max-width: 590px;
 }
 
 .payoff-preview {
   display: grid;
-  gap: 8px;
+  gap: 6px;
   max-width: 600px;
 }
 
@@ -248,8 +255,8 @@ button {
   display: grid;
   gap: 12px;
   grid-template-columns: 96px 1fr auto;
-  min-height: 54px;
-  padding: 10px 14px;
+  min-height: 48px;
+  padding: 8px 14px;
 }
 
 .preview-row.active {
@@ -300,7 +307,7 @@ button {
   display: grid;
   gap: 12px;
   grid-template-columns: auto 1fr;
-  padding: 14px 0;
+  padding: 11px 0;
 }
 
 .intro-point:last-child {
@@ -349,14 +356,22 @@ h2 {
   font-size: 22px;
 }
 
-.auth-panel {
-  display: grid;
-  gap: 20px;
-  width: min(100%, 430px);
+.auth-theme-corner {
+  position: absolute;
+  right: clamp(24px, 3vw, 44px);
+  top: clamp(22px, 3vw, 40px);
+  z-index: 2;
 }
 
-.auth-panel .auth-header {
-  justify-content: flex-end;
+.auth-panel {
+  background: color-mix(in srgb, var(--surface) 92%, var(--surface-soft));
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  box-shadow: var(--shadow);
+  display: grid;
+  gap: 22px;
+  padding: clamp(22px, 3vw, 30px);
+  width: min(100%, 470px);
 }
 
 .auth-panel .auth-copy h1 {
@@ -729,6 +744,7 @@ button:focus-visible {
   .auth-card {
     border-left: 0;
     border-top: 1px solid var(--border);
+    padding-top: 84px;
   }
 
   .auth-intro {
@@ -757,10 +773,6 @@ button:focus-visible {
     flex-direction: column;
   }
 
-  .auth-panel .auth-header {
-    align-items: flex-end;
-  }
-
   .form-grid.two,
   .stat-grid,
   .next-panel {
@@ -778,6 +790,10 @@ button:focus-visible {
   .auth-intro {
     gap: 20px;
     padding: 20px;
+  }
+
+  .auth-card {
+    padding-top: 84px;
   }
 
   .brand-mark {

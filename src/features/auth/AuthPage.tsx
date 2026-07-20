@@ -72,29 +72,29 @@ export function AuthPage({ theme, onToggleTheme, onLogin, onSignup }: AuthPagePr
 
           <div className="intro-stack">
             <div className="intro-copy">
-              <p>Financial control</p>
-              <h1>Plan your debt payoff with structure.</h1>
+              <p>A better way forward</p>
+              <h1>A clear plan makes debt feel lighter.</h1>
               <span>
-                GoXPlan helps you organize every balance, decide what deserves attention first, and keep
-                your payoff plan moving with clear priorities.
+                GoXPlan is built to help you see the full picture, choose the next best move, and turn
+                pressure into steady progress one decision at a time.
               </span>
             </div>
 
             <div className="payoff-preview" aria-hidden="true">
               <div className="preview-row active">
                 <span>Priority 01</span>
-                <strong>Prevent fees</strong>
-                <em>Next action</em>
+                <strong>Protect today</strong>
+                <em>Immediate</em>
               </div>
               <div className="preview-row">
                 <span>Priority 02</span>
-                <strong>Negotiate</strong>
-                <em>Settlement</em>
+                <strong>Reduce pressure</strong>
+                <em>Negotiate</em>
               </div>
               <div className="preview-row">
                 <span>Priority 03</span>
-                <strong>Track progress</strong>
-                <em>Dashboard</em>
+                <strong>Build momentum</strong>
+                <em>Track</em>
               </div>
               <div className="preview-meter">
                 <span />
@@ -104,26 +104,26 @@ export function AuthPage({ theme, onToggleTheme, onLogin, onSignup }: AuthPagePr
             <div className="intro-details">
               <div className="intro-point">
                 <CheckCircle2 size={18} />
-                <span>Organize balances, creditors, notes, and status.</span>
+                <span>Know exactly where you stand before making the next move.</span>
               </div>
               <div className="intro-point">
                 <Flag size={18} />
-                <span>Set priorities based on urgency and payoff strategy.</span>
+                <span>Focus on the debts that need attention first.</span>
               </div>
               <div className="intro-point">
                 <BarChart3 size={18} />
-                <span>Track progress from the dashboard as pages are added.</span>
+                <span>Keep the work steady until the plan starts feeling possible.</span>
               </div>
             </div>
           </div>
         </aside>
 
         <section className="auth-card">
-          <div className="auth-panel">
-            <header className="auth-header">
-              <ThemeToggle theme={theme} onToggle={onToggleTheme} />
-            </header>
+          <div className="auth-theme-corner">
+            <ThemeToggle theme={theme} onToggle={onToggleTheme} />
+          </div>
 
+          <div className="auth-panel">
             <div className="auth-copy">
               <h1>{mode === "signup" ? "Create account" : "Login"}</h1>
             </div>
