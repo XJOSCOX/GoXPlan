@@ -1,4 +1,4 @@
-import { Database, LogOut, PiggyBank, ReceiptText, WalletCards } from "lucide-react";
+import { LayoutDashboard, LogOut, PiggyBank, ReceiptText, WalletCards } from "lucide-react";
 import { ThemeToggle } from "../../components/ThemeToggle";
 import type { Theme } from "../../theme/theme";
 import type { DashboardStats, PublicUser } from "../../types";
@@ -32,10 +32,10 @@ export function DashboardPage({ user, stats, theme, onToggleTheme, onLogout }: D
       </header>
 
       <section className="hero-panel">
-        <p>Local SQL workspace</p>
+        <p>Dashboard</p>
         <h1>Welcome, {user.firstName}.</h1>
         <span>
-          Your account is active. Next we will build each page one by one, and every record will save into your local SQL database.
+          Your workspace is ready. Next we will build each page one by one and shape GoXPlan around your workflow.
         </span>
       </section>
 
@@ -58,10 +58,10 @@ export function DashboardPage({ user, stats, theme, onToggleTheme, onLogout }: D
       </section>
 
       <section className="panel next-panel">
-        <Database size={24} />
+        <LayoutDashboard size={24} />
         <div>
           <h2>Foundation is ready.</h2>
-          <p>Login, signup, session persistence, theme persistence, and local SQL storage are in place.</p>
+          <p>Login, signup, theme preferences, and the dashboard are in place.</p>
         </div>
       </section>
     </main>

@@ -47,7 +47,7 @@ export function App() {
         }
       } catch (error) {
         if (!cancelled) {
-          setStartupError(error instanceof Error ? error.message : "Could not open local SQL database.");
+          setStartupError(error instanceof Error ? error.message : "Could not start GoXPlan.");
         }
       } finally {
         if (!cancelled) setIsLoading(false);
@@ -66,7 +66,7 @@ export function App() {
   }
 
   async function handleSignup(input: SignupInput) {
-    if (!db) throw new Error("Local database is not ready yet.");
+    if (!db) throw new Error("GoXPlan is still starting. Please try again.");
     const nextUser = await upsertUser(db, input);
     setSessionUserId(nextUser.id);
     setUser(nextUser);
@@ -75,7 +75,7 @@ export function App() {
   }
 
   async function handleLogin(input: LoginInput) {
-    if (!db) throw new Error("Local database is not ready yet.");
+    if (!db) throw new Error("GoXPlan is still starting. Please try again.");
     const nextUser = await loginUser(db, input);
     setSessionUserId(nextUser.id);
     setUser(nextUser);
@@ -94,7 +94,7 @@ export function App() {
       <main className="center-screen">
         <section className="loading-card">
           <strong>GoXPlan</strong>
-          <span>Opening local SQL database...</span>
+          <span>Opening GoXPlan...</span>
         </section>
       </main>
     );

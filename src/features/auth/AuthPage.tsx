@@ -74,7 +74,7 @@ export function AuthPage({ theme, onToggleTheme, onLogin, onSignup }: AuthPagePr
             <div className="brand-mark">GX</div>
             <div>
               <strong>GoXPlan</strong>
-              <span>Local SQL debt planning</span>
+              <span>Debt planning workspace</span>
             </div>
           </div>
           <ThemeToggle theme={theme} onToggle={onToggleTheme} />
@@ -82,8 +82,8 @@ export function AuthPage({ theme, onToggleTheme, onLogin, onSignup }: AuthPagePr
 
         <div className="auth-copy">
           <p>{mode === "signup" ? "Create account" : "Welcome back"}</p>
-          <h1>{mode === "signup" ? "Create your local workspace." : "Login to GoXPlan."}</h1>
-          <span>Your account is saved privately in a local SQLite database on this device.</span>
+          <h1>{mode === "signup" ? "Create your workspace." : "Login to GoXPlan."}</h1>
+          <span>Plan debts, track priorities, and build your payoff strategy.</span>
         </div>
 
         <div className="segmented-control">

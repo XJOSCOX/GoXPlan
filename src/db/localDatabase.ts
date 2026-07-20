@@ -118,7 +118,7 @@ export async function upsertUser(db: Database, input: SignupInput) {
 
 export async function loginUser(db: Database, input: LoginInput) {
   const user = findUserByLogin(db, input.login);
-  if (!user) throw new Error("No local account matches that username or email.");
+  if (!user) throw new Error("No account matches that username or email.");
 
   const password = await hashPassword(input.password, user.passwordSalt);
   if (password.hash !== user.passwordHash) {
