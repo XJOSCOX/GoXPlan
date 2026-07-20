@@ -1,4 +1,4 @@
-import { AtSign, Check, LockKeyhole, Mail, UserRound, WalletCards } from "lucide-react";
+import { AtSign, BarChart3, Check, CheckCircle2, Flag, LockKeyhole, Mail, UserRound } from "lucide-react";
 import { type FormEvent, useState } from "react";
 import { FormField } from "../../components/FormField";
 import { ThemeToggle } from "../../components/ThemeToggle";
@@ -72,75 +72,86 @@ export function AuthPage({ theme, onToggleTheme, onLogin, onSignup }: AuthPagePr
 
           <div className="intro-copy">
             <p>Financial control</p>
-            <h1>Plan with clarity. Move with discipline.</h1>
-            <span>Keep the work simple: sign in, review the dashboard, then build each page with purpose.</span>
+            <h1>Plan your debt payoff with structure.</h1>
+            <span>
+              GoXPlan helps you organize what you owe, decide what needs attention first, and keep your
+              payoff plan moving.
+            </span>
           </div>
 
-          <div className="intro-card">
-            <WalletCards size={22} />
-            <div>
-              <strong>Workspace foundation</strong>
-              <span>Authentication and dashboard are ready for the next build step.</span>
+          <div className="intro-details">
+            <div className="intro-point">
+              <CheckCircle2 size={18} />
+              <span>Organize balances, creditors, notes, and status.</span>
+            </div>
+            <div className="intro-point">
+              <Flag size={18} />
+              <span>Set priorities based on urgency and payoff strategy.</span>
+            </div>
+            <div className="intro-point">
+              <BarChart3 size={18} />
+              <span>Track progress from the dashboard as pages are added.</span>
             </div>
           </div>
         </aside>
 
         <section className="auth-card">
-          <header className="auth-header">
-            <span>{mode === "signup" ? "New workspace" : "Secure access"}</span>
-            <ThemeToggle theme={theme} onToggle={onToggleTheme} />
-          </header>
+          <div className="auth-panel">
+            <header className="auth-header">
+              <span>{mode === "signup" ? "New workspace" : "Secure access"}</span>
+              <ThemeToggle theme={theme} onToggle={onToggleTheme} />
+            </header>
 
-          <div className="auth-copy">
-            <p>{mode === "signup" ? "Create account" : "Welcome back"}</p>
-            <h1>{mode === "signup" ? "Create your workspace." : "Login to GoXPlan."}</h1>
-            <span>{mode === "signup" ? "Set up your profile to begin." : "Enter your credentials to continue."}</span>
-          </div>
+            <div className="auth-copy">
+              <p>{mode === "signup" ? "Create account" : "Welcome back"}</p>
+              <h1>{mode === "signup" ? "Create your workspace." : "Login to GoXPlan."}</h1>
+            </div>
 
-          <div className="segmented-control">
-            <button className={mode === "login" ? "active" : ""} type="button" onClick={() => setMode("login")}>
-              Login
-            </button>
-            <button className={mode === "signup" ? "active" : ""} type="button" onClick={() => setMode("signup")}>
-              Sign up
-            </button>
-          </div>
+            <div className="segmented-control">
+              <button className={mode === "login" ? "active" : ""} type="button" onClick={() => setMode("login")}>
+                Login
+              </button>
+              <button className={mode === "signup" ? "active" : ""} type="button" onClick={() => setMode("signup")}>
+                Sign up
+              </button>
+            </div>
 
-          <form className="auth-form" onSubmit={submit}>
-            {mode === "signup" && (
-              <>
-                <div className="form-grid two">
-                  <FormField icon={<UserRound size={17} />} label="First name" autoComplete="given-name" value={form.firstName} onChange={(value) => setForm({ ...form, firstName: value })} />
-                  <FormField icon={<UserRound size={17} />} label="Last name" autoComplete="family-name" value={form.lastName} onChange={(value) => setForm({ ...form, lastName: value })} />
+            <form className="auth-form" onSubmit={submit}>
+              {mode === "signup" && (
+                <>
+                  <div className="form-grid two">
+                    <FormField icon={<UserRound size={17} />} label="First name" autoComplete="given-name" value={form.firstName} onChange={(value) => setForm({ ...form, firstName: value })} />
+                    <FormField icon={<UserRound size={17} />} label="Last name" autoComplete="family-name" value={form.lastName} onChange={(value) => setForm({ ...form, lastName: value })} />
+                  </div>
+                  <FormField icon={<AtSign size={17} />} label="Username" autoComplete="username" value={form.username} onChange={(value) => setForm({ ...form, username: value })} />
+                  <FormField icon={<Mail size={17} />} label="Email" type="email" autoComplete="email" value={form.email} onChange={(value) => setForm({ ...form, email: value })} />
+                </>
+              )}
+
+              {mode === "login" && (
+                <FormField icon={<AtSign size={17} />} label="Username or email" autoComplete="username" value={form.login} onChange={(value) => setForm({ ...form, login: value })} />
+              )}
+
+              <FormField icon={<LockKeyhole size={17} />} label="Password" type="password" autoComplete={mode === "signup" ? "new-password" : "current-password"} value={form.password} onChange={(value) => setForm({ ...form, password: value })} />
+
+              {mode === "signup" && (
+                <div className="password-rules">
+                  {passwordRules(form.password).map((rule) => (
+                    <span className={rule.done ? "done" : ""} key={rule.label}>
+                      {rule.done && <Check size={12} />}
+                      {rule.label}
+                    </span>
+                  ))}
                 </div>
-                <FormField icon={<AtSign size={17} />} label="Username" autoComplete="username" value={form.username} onChange={(value) => setForm({ ...form, username: value })} />
-                <FormField icon={<Mail size={17} />} label="Email" type="email" autoComplete="email" value={form.email} onChange={(value) => setForm({ ...form, email: value })} />
-              </>
-            )}
+              )}
 
-            {mode === "login" && (
-              <FormField icon={<AtSign size={17} />} label="Username or email" autoComplete="username" value={form.login} onChange={(value) => setForm({ ...form, login: value })} />
-            )}
+              {error && <div className="form-error">{error}</div>}
 
-            <FormField icon={<LockKeyhole size={17} />} label="Password" type="password" autoComplete={mode === "signup" ? "new-password" : "current-password"} value={form.password} onChange={(value) => setForm({ ...form, password: value })} />
-
-            {mode === "signup" && (
-              <div className="password-rules">
-                {passwordRules(form.password).map((rule) => (
-                  <span className={rule.done ? "done" : ""} key={rule.label}>
-                    {rule.done && <Check size={12} />}
-                    {rule.label}
-                  </span>
-                ))}
-              </div>
-            )}
-
-            {error && <div className="form-error">{error}</div>}
-
-            <button className="primary-button" disabled={isSubmitting} type="submit">
-              {isSubmitting ? "Please wait..." : mode === "signup" ? "Create account" : "Login"}
-            </button>
-          </form>
+              <button className="primary-button" disabled={isSubmitting} type="submit">
+                {isSubmitting ? "Please wait..." : mode === "signup" ? "Create account" : "Login"}
+              </button>
+            </form>
+          </div>
         </section>
       </section>
     </main>

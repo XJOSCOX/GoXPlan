@@ -61,12 +61,16 @@ button {
   align-items: center;
   display: grid;
   min-height: 100vh;
-  padding: clamp(20px, 4vw, 48px);
   place-items: center;
 }
 
+.auth-screen {
+  align-items: stretch;
+  padding: 0;
+  place-items: stretch;
+}
+
 .auth-card,
-.auth-intro,
 .loading-card,
 .panel,
 .hero-panel,
@@ -78,10 +82,13 @@ button {
 }
 
 .auth-shell {
+  align-items: stretch;
   display: grid;
-  gap: 18px;
-  grid-template-columns: minmax(360px, 0.9fr) minmax(420px, 1fr);
-  max-width: 1040px;
+  gap: 0;
+  grid-template-columns: minmax(0, 3fr) minmax(380px, 2fr);
+  height: 100vh;
+  max-width: none;
+  overflow: hidden;
   width: 100%;
 }
 
@@ -89,13 +96,22 @@ button {
 .auth-intro {
   display: grid;
   gap: 24px;
-  min-height: 610px;
-  padding: clamp(26px, 4vw, 40px);
   width: 100%;
 }
 
 .auth-card {
   align-content: center;
+  background: var(--surface);
+  border: 0;
+  border-left: 1px solid var(--border);
+  border-radius: 0;
+  box-shadow: none;
+  gap: 22px;
+  height: 100vh;
+  overflow-y: auto;
+  padding: clamp(28px, 4vw, 58px);
+  place-items: center;
+  scrollbar-gutter: stable;
 }
 
 .auth-intro {
@@ -105,6 +121,8 @@ button {
     var(--surface);
   overflow: hidden;
   position: relative;
+  height: 100vh;
+  padding: clamp(36px, 5vw, 76px);
 }
 
 .auth-intro::after {
@@ -183,8 +201,8 @@ button {
 
 .intro-copy {
   display: grid;
-  gap: 12px;
-  max-width: 440px;
+  gap: 16px;
+  max-width: 640px;
 }
 
 .intro-copy p {
@@ -197,41 +215,44 @@ button {
 }
 
 .intro-copy h1 {
-  font-size: clamp(44px, 6vw, 72px);
-  line-height: 0.94;
+  font-size: clamp(52px, 6.2vw, 80px);
+  line-height: 0.96;
+  max-width: 640px;
 }
 
 .intro-copy span {
   color: var(--muted);
-  font-size: 16px;
-  max-width: 360px;
+  font-size: clamp(15px, 1.4vw, 17px);
+  max-width: 520px;
 }
 
-.intro-card {
+.intro-details {
+  display: grid;
+  gap: 0;
+  max-width: 620px;
+}
+
+.intro-point {
   align-items: center;
-  background: var(--surface-soft);
-  border: 1px solid var(--border);
-  border-radius: 8px;
+  border-top: 1px solid color-mix(in srgb, var(--border) 62%, transparent);
+  color: var(--muted);
   display: grid;
   gap: 12px;
   grid-template-columns: auto 1fr;
-  padding: 16px;
+  padding: 14px 0;
 }
 
-.intro-card svg {
+.intro-point:last-child {
+  border-bottom: 1px solid color-mix(in srgb, var(--border) 62%, transparent);
+}
+
+.intro-point svg {
   color: var(--text);
 }
 
-.intro-card strong {
-  color: var(--text);
-  display: block;
+.intro-point span {
   font-size: 14px;
-}
-
-.intro-card span {
-  color: var(--muted);
-  display: block;
-  font-size: 13px;
+  font-weight: 750;
 }
 
 .auth-copy p,
@@ -265,6 +286,16 @@ h1 {
 
 h2 {
   font-size: 22px;
+}
+
+.auth-panel {
+  display: grid;
+  gap: 22px;
+  width: min(100%, 430px);
+}
+
+.auth-panel .auth-copy h1 {
+  font-size: clamp(34px, 4vw, 46px);
 }
 
 .segmented-control {
@@ -341,7 +372,7 @@ h2 {
 .form-field > span:focus-within {
   background: color-mix(in srgb, var(--surface) 92%, var(--surface-soft));
   border-color: color-mix(in srgb, var(--text) 45%, var(--border));
-  box-shadow: 0 0 0 4px color-mix(in srgb, var(--primary) 10%, transparent);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--text) 26%, transparent);
 }
 
 .form-field svg {
@@ -381,10 +412,14 @@ input::placeholder {
 textarea:focus {
   background: color-mix(in srgb, var(--surface) 92%, var(--surface-soft));
   border-color: color-mix(in srgb, var(--text) 45%, var(--border));
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--text) 26%, transparent);
 }
 
-input:focus,
-textarea:focus,
+input:focus {
+  box-shadow: none;
+  outline: 0;
+}
+
 button:focus-visible {
   box-shadow: 0 0 0 3px color-mix(in srgb, var(--primary) 18%, transparent);
   outline: 0;
@@ -437,15 +472,27 @@ button:focus-visible {
 }
 
 .theme-switch {
-  background: var(--surface-soft);
+  background: color-mix(in srgb, var(--surface-soft) 88%, var(--surface));
+  border: 1px solid var(--border);
   color: var(--text);
   min-height: 42px;
-  padding: 6px 10px 6px 7px;
+  min-width: 112px;
+  padding: 6px 11px 6px 7px;
+  transition:
+    background 160ms ease,
+    border-color 160ms ease,
+    transform 160ms ease;
+}
+
+.theme-switch:hover {
+  background: var(--surface-soft);
+  border-color: color-mix(in srgb, var(--text) 22%, var(--border));
+  transform: translateY(-1px);
 }
 
 .theme-switch-track {
   align-items: center;
-  background: color-mix(in srgb, var(--surface) 60%, var(--border));
+  background: color-mix(in srgb, var(--surface) 72%, var(--border));
   border: 1px solid var(--border);
   border-radius: 999px;
   display: flex;
@@ -458,7 +505,7 @@ button:focus-visible {
   align-items: center;
   background: var(--surface);
   border-radius: 999px;
-  box-shadow: 0 5px 12px rgb(0 0 0 / 14%);
+  box-shadow: 0 5px 12px rgb(0 0 0 / 18%);
   color: var(--text);
   display: grid;
   height: 22px;
@@ -470,6 +517,10 @@ button:focus-visible {
 
 :root[data-theme="dark"] .theme-switch-thumb {
   transform: translateX(24px);
+}
+
+:root[data-theme="dark"] .theme-switch-track {
+  background: #101010;
 }
 
 .icon-text-button.danger,
@@ -557,19 +608,70 @@ button:focus-visible {
   margin-bottom: 0;
 }
 
-@media (max-width: 720px) {
-  .auth-shell {
-    grid-template-columns: 1fr;
+@media (max-height: 760px) and (min-width: 901px) {
+  .auth-card,
+  .auth-intro {
+    gap: 18px;
+    padding: 28px;
   }
 
+  .intro-copy h1 {
+    font-size: clamp(40px, 4.4vw, 56px);
+  }
+
+}
+
+@media (max-width: 1100px) {
+  .auth-shell {
+    grid-template-columns: minmax(0, 3fr) minmax(340px, 2fr);
+    max-width: none;
+  }
+
+  .intro-copy h1 {
+    font-size: clamp(44px, 5.8vw, 66px);
+  }
+
+  .auth-card,
   .auth-intro {
+    padding: clamp(24px, 3vw, 34px);
+  }
+}
+
+@media (max-width: 900px) {
+  .auth-shell {
+    grid-template-columns: 1fr;
+    height: auto;
+    max-width: none;
+    min-height: 100vh;
+    overflow: visible;
+  }
+
+  .auth-card,
+  .auth-intro {
+    height: auto;
     min-height: auto;
+    overflow: visible;
   }
 
   .auth-card {
-    min-height: auto;
+    border-left: 0;
+    border-top: 1px solid var(--border);
   }
 
+  .auth-intro {
+    gap: 28px;
+  }
+
+  .intro-copy h1 {
+    font-size: clamp(40px, 9vw, 58px);
+  }
+
+  .intro-copy span {
+    max-width: none;
+  }
+}
+
+@media (max-width: 720px) {
   .auth-header,
   .dashboard-header,
   .header-actions {
@@ -581,5 +683,41 @@ button:focus-visible {
   .stat-grid,
   .next-panel {
     grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 520px) {
+  .auth-screen {
+    align-items: start;
+    padding: 12px;
+  }
+
+  .auth-card,
+  .auth-intro {
+    gap: 20px;
+    padding: 20px;
+  }
+
+  .brand-mark {
+    height: 40px;
+    width: 40px;
+  }
+
+  .brand strong {
+    font-size: 19px;
+  }
+
+  .intro-copy h1,
+  .auth-copy h1 {
+    font-size: clamp(34px, 12vw, 46px);
+  }
+
+  .segmented-control {
+    gap: 4px;
+    padding: 4px;
+  }
+
+  .theme-switch {
+    justify-self: start;
   }
 }
