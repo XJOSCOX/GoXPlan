@@ -124,7 +124,7 @@ button {
   overflow: hidden;
   position: relative;
   height: 100vh;
-  justify-items: end;
+  justify-items: center;
   padding: clamp(36px, 5vw, 76px);
 }
 
