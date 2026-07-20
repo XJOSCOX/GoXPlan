@@ -47,7 +47,8 @@ body {
 }
 
 button,
-input {
+input,
+textarea {
   font: inherit;
 }
 
@@ -60,11 +61,12 @@ button {
   align-items: center;
   display: grid;
   min-height: 100vh;
-  padding: 24px;
+  padding: clamp(20px, 4vw, 48px);
   place-items: center;
 }
 
 .auth-card,
+.auth-intro,
 .loading-card,
 .panel,
 .hero-panel,
@@ -75,12 +77,51 @@ button {
   box-shadow: var(--shadow);
 }
 
-.auth-card {
+.auth-shell {
   display: grid;
-  gap: 22px;
-  max-width: 560px;
-  padding: 28px;
+  gap: 18px;
+  grid-template-columns: minmax(360px, 0.9fr) minmax(420px, 1fr);
+  max-width: 1040px;
   width: 100%;
+}
+
+.auth-card,
+.auth-intro {
+  display: grid;
+  gap: 24px;
+  min-height: 610px;
+  padding: clamp(26px, 4vw, 40px);
+  width: 100%;
+}
+
+.auth-card {
+  align-content: center;
+}
+
+.auth-intro {
+  align-content: space-between;
+  background:
+    linear-gradient(180deg, color-mix(in srgb, var(--surface) 96%, transparent), var(--surface)),
+    var(--surface);
+  overflow: hidden;
+  position: relative;
+}
+
+.auth-intro::after {
+  background:
+    linear-gradient(var(--border) 1px, transparent 1px),
+    linear-gradient(90deg, var(--border) 1px, transparent 1px);
+  background-size: 44px 44px;
+  content: "";
+  inset: 0;
+  opacity: 0.16;
+  pointer-events: none;
+  position: absolute;
+}
+
+.auth-intro > * {
+  position: relative;
+  z-index: 1;
 }
 
 .auth-header,
@@ -94,6 +135,13 @@ button {
 .auth-header,
 .dashboard-header {
   justify-content: space-between;
+}
+
+.auth-header > span {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 850;
+  text-transform: uppercase;
 }
 
 .brand,
@@ -130,7 +178,60 @@ button {
 
 .auth-copy {
   display: grid;
-  gap: 8px;
+  gap: 9px;
+}
+
+.intro-copy {
+  display: grid;
+  gap: 12px;
+  max-width: 440px;
+}
+
+.intro-copy p {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 850;
+  letter-spacing: 0;
+  margin: 0;
+  text-transform: uppercase;
+}
+
+.intro-copy h1 {
+  font-size: clamp(44px, 6vw, 72px);
+  line-height: 0.94;
+}
+
+.intro-copy span {
+  color: var(--muted);
+  font-size: 16px;
+  max-width: 360px;
+}
+
+.intro-card {
+  align-items: center;
+  background: var(--surface-soft);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  display: grid;
+  gap: 12px;
+  grid-template-columns: auto 1fr;
+  padding: 16px;
+}
+
+.intro-card svg {
+  color: var(--text);
+}
+
+.intro-card strong {
+  color: var(--text);
+  display: block;
+  font-size: 14px;
+}
+
+.intro-card span {
+  color: var(--muted);
+  display: block;
+  font-size: 13px;
 }
 
 .auth-copy p,
@@ -157,9 +258,9 @@ h2 {
 }
 
 h1 {
-  font-size: clamp(34px, 5vw, 52px);
+  font-size: clamp(36px, 5vw, 54px);
   font-weight: 850;
-  line-height: 1;
+  line-height: 0.98;
 }
 
 h2 {
@@ -177,7 +278,8 @@ h2 {
 
 .segmented-control button,
 .icon-text-button,
-.primary-button {
+.primary-button,
+.theme-switch {
   align-items: center;
   border: 0;
   border-radius: 8px;
@@ -206,7 +308,7 @@ h2 {
 }
 
 .auth-form {
-  gap: 14px;
+  gap: 16px;
 }
 
 .form-grid.two {
@@ -228,8 +330,18 @@ h2 {
   border-radius: 8px;
   display: flex;
   gap: 8px;
-  min-height: 46px;
-  padding: 0 12px;
+  min-height: 50px;
+  padding: 0 14px;
+  transition:
+    border-color 160ms ease,
+    background 160ms ease,
+    box-shadow 160ms ease;
+}
+
+.form-field > span:focus-within {
+  background: color-mix(in srgb, var(--surface) 92%, var(--surface-soft));
+  border-color: color-mix(in srgb, var(--text) 45%, var(--border));
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--primary) 10%, transparent);
 }
 
 .form-field svg {
@@ -237,7 +349,8 @@ h2 {
   flex: 0 0 auto;
 }
 
-input {
+input,
+textarea {
   background: transparent;
   border: 0;
   color: var(--text);
@@ -246,7 +359,32 @@ input {
   width: 100%;
 }
 
+textarea {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  line-height: 1.55;
+  min-height: 128px;
+  padding: 13px 14px;
+  resize: vertical;
+  transition:
+    border-color 160ms ease,
+    background 160ms ease,
+    box-shadow 160ms ease;
+}
+
+textarea::placeholder,
+input::placeholder {
+  color: color-mix(in srgb, var(--muted) 72%, transparent);
+}
+
+textarea:focus {
+  background: color-mix(in srgb, var(--surface) 92%, var(--surface-soft));
+  border-color: color-mix(in srgb, var(--text) 45%, var(--border));
+}
+
 input:focus,
+textarea:focus,
 button:focus-visible {
   box-shadow: 0 0 0 3px color-mix(in srgb, var(--primary) 18%, transparent);
   outline: 0;
@@ -259,11 +397,14 @@ button:focus-visible {
 }
 
 .password-rules span {
+  align-items: center;
   background: var(--surface-soft);
   border-radius: 999px;
   color: var(--muted);
+  display: inline-flex;
   font-size: 12px;
   font-weight: 800;
+  gap: 4px;
   padding: 6px 9px;
 }
 
@@ -275,6 +416,14 @@ button:focus-visible {
 .primary-button {
   background: var(--primary);
   color: var(--primary-contrast);
+  min-height: 50px;
+  transition:
+    opacity 160ms ease,
+    transform 160ms ease;
+}
+
+.primary-button:hover {
+  transform: translateY(-1px);
 }
 
 .primary-button:disabled {
@@ -285,6 +434,42 @@ button:focus-visible {
 .icon-text-button {
   background: var(--surface-soft);
   color: var(--text);
+}
+
+.theme-switch {
+  background: var(--surface-soft);
+  color: var(--text);
+  min-height: 42px;
+  padding: 6px 10px 6px 7px;
+}
+
+.theme-switch-track {
+  align-items: center;
+  background: color-mix(in srgb, var(--surface) 60%, var(--border));
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  display: flex;
+  height: 28px;
+  padding: 2px;
+  width: 52px;
+}
+
+.theme-switch-thumb {
+  align-items: center;
+  background: var(--surface);
+  border-radius: 999px;
+  box-shadow: 0 5px 12px rgb(0 0 0 / 14%);
+  color: var(--text);
+  display: grid;
+  height: 22px;
+  justify-content: center;
+  transform: translateX(0);
+  transition: transform 180ms ease;
+  width: 22px;
+}
+
+:root[data-theme="dark"] .theme-switch-thumb {
+  transform: translateX(24px);
 }
 
 .icon-text-button.danger,
@@ -373,6 +558,18 @@ button:focus-visible {
 }
 
 @media (max-width: 720px) {
+  .auth-shell {
+    grid-template-columns: 1fr;
+  }
+
+  .auth-intro {
+    min-height: auto;
+  }
+
+  .auth-card {
+    min-height: auto;
+  }
+
   .auth-header,
   .dashboard-header,
   .header-actions {
