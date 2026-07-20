@@ -1,28 +1,119 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import type { Database } from "sql.js";
+import { AppShell, type AppPage } from "./components/AppShell";
+import { ConfirmDialog } from "./components/ConfirmDialog";
 import {
   clearSessionUserId,
+  deleteDebt,
+  deleteFinancialAccount,
+  exportUserBackup,
   findUserById,
   getDashboardStats,
+  getPayoffSettings,
   getSessionUserId,
+  importUserBackup,
+  deleteNegotiation,
+  deletePayment,
+  listFinancialAccounts,
+  listIncome,
+  listDebts,
+  listNegotiations,
+  listPayments,
   loginUser,
   openDatabase,
   setSessionUserId,
+  deleteIncome,
+  upsertDebt,
+  upsertFinancialAccount,
+  upsertIncome,
+  upsertNegotiation,
+  upsertPayoffSettings,
+  upsertPayment,
   upsertUser,
+  type BackupImportMode,
+  type BackupImportSummary,
+  type GoXPlanBackup,
 } from "./db/localDatabase";
+import { knownDebts } from "./data/knownDebts";
 import { AuthPage } from "./features/auth/AuthPage";
+import { AccountsPage } from "./features/accounts/AccountsPage";
+import { BackupPage } from "./features/backup/BackupPage";
 import { DashboardPage } from "./features/dashboard/DashboardPage";
+import { DebtsPage } from "./features/debts/DebtsPage";
+import { IncomePage } from "./features/income/IncomePage";
+import { NegotiationsPage } from "./features/negotiations/NegotiationsPage";
+import { PayoffPlanPage } from "./features/payoff/PayoffPlanPage";
+import { PaymentsPage } from "./features/payments/PaymentsPage";
+import { ReportsPage } from "./features/reports/ReportsPage";
 import { getInitialTheme, saveTheme, type Theme } from "./theme/theme";
-import type { DashboardStats, LoginInput, PublicUser, SignupInput } from "./types";
+import type {
+  DashboardStats,
+  Debt,
+  DebtInput,
+  FinancialAccount,
+  FinancialAccountInput,
+  Income,
+  IncomeInput,
+  LoginInput,
+  Negotiation,
+  NegotiationInput,
+  Payment,
+  PaymentInput,
+  PayoffSettings,
+  PayoffSettingsInput,
+  PublicUser,
+  SignupInput,
+} from "./types";
 
-const emptyStats: DashboardStats = { debts: 0, income: 0, payments: 0 };
+const emptyStats: DashboardStats = { debts: 0, income: 0, negotiations: 0, payments: 0 };
+const emptyPayoffSettings: PayoffSettings = {
+  userId: "",
+  monthlyBudgetCents: 0,
+  budgetFrequency: "MONTHLY",
+  emergencyReserveCents: 0,
+  maxAccountsPerRound: null,
+  manualAllocations: {},
+  strategy: "HYBRID",
+  updatedAt: new Date().toISOString(),
+};
+
+const pagePaths: Record<AppPage, string> = {
+  dashboard: "/dashboard",
+  debts: "/debts",
+  accounts: "/accounts",
+  income: "/income",
+  negotiations: "/negotiations",
+  payments: "/payments",
+  reports: "/reports",
+  payoff: "/payoff",
+  backup: "/backup",
+};
+
+type ConfirmDialogState = {
+  confirmLabel: string;
+  message: string;
+  tone?: "danger" | "neutral";
+  title: string;
+  onConfirm: () => Promise<void>;
+};
 
 export function App() {
   const [db, setDb] = useState<Database>();
   const [user, setUser] = useState<PublicUser>();
+  const [page, setPage] = useState<AppPage>(() => getPageFromPath() ?? "dashboard");
   const [stats, setStats] = useState(emptyStats);
+  const [debts, setDebts] = useState<Debt[]>([]);
+  const [financialAccounts, setFinancialAccounts] = useState<FinancialAccount[]>([]);
+  const [income, setIncome] = useState<Income[]>([]);
+  const [negotiations, setNegotiations] = useState<Negotiation[]>([]);
+  const [payments, setPayments] = useState<Payment[]>([]);
+  const [paymentDraft, setPaymentDraft] = useState<PaymentInput>();
+  const [payoffSettings, setPayoffSettings] = useState<PayoffSettings>(emptyPayoffSettings);
+  const [payoffHasUnsavedChanges, setPayoffHasUnsavedChanges] = useState(false);
   const [theme, setTheme] = useState<Theme>(() => getInitialTheme());
   const [isLoading, setIsLoading] = useState(true);
+  const [confirmDialog, setConfirmDialog] = useState<ConfirmDialogState>();
+  const [isConfirming, setIsConfirming] = useState(false);
   const [startupError, setStartupError] = useState("");
 
   useEffect(() => {
@@ -42,8 +133,21 @@ export function App() {
         if (cancelled) return;
         setDb(database);
         if (sessionUser) {
+          const routePage = getPageFromPath() ?? "dashboard";
           setUser(sessionUser);
+          setPage(routePage);
           setStats(getDashboardStats(database, sessionUser.id));
+          setDebts(listDebts(database, sessionUser.id));
+          setFinancialAccounts(listFinancialAccounts(database, sessionUser.id));
+          setIncome(listIncome(database, sessionUser.id));
+          setNegotiations(listNegotiations(database, sessionUser.id));
+          setPayments(listPayments(database, sessionUser.id));
+          setPayoffSettings(getPayoffSettings(database, sessionUser.id));
+          if (window.location.pathname === "/auth" || !getPageFromPath()) {
+            replaceUrl(routePage);
+          }
+        } else if (window.location.pathname !== "/auth") {
+          window.history.replaceState(null, "", "/auth");
         }
       } catch (error) {
         if (!cancelled) {
@@ -61,6 +165,15 @@ export function App() {
     };
   }, []);
 
+  useEffect(() => {
+    function handlePopState() {
+      setPage(getPageFromPath() ?? "dashboard");
+    }
+
+    window.addEventListener("popstate", handlePopState);
+    return () => window.removeEventListener("popstate", handlePopState);
+  }, []);
+
   function toggleTheme() {
     setTheme((current) => (current === "dark" ? "light" : "dark"));
   }
@@ -70,7 +183,14 @@ export function App() {
     const nextUser = await upsertUser(db, input);
     setSessionUserId(nextUser.id);
     setUser(nextUser);
+    navigateToPage(getPageFromPath() ?? "dashboard", true);
     setStats(getDashboardStats(db, nextUser.id));
+    setDebts(listDebts(db, nextUser.id));
+    setFinancialAccounts(listFinancialAccounts(db, nextUser.id));
+    setIncome(listIncome(db, nextUser.id));
+    setNegotiations(listNegotiations(db, nextUser.id));
+    setPayments(listPayments(db, nextUser.id));
+    setPayoffSettings(getPayoffSettings(db, nextUser.id));
     return nextUser;
   }
 
@@ -79,14 +199,279 @@ export function App() {
     const nextUser = await loginUser(db, input);
     setSessionUserId(nextUser.id);
     setUser(nextUser);
+    navigateToPage(getPageFromPath() ?? "dashboard", true);
     setStats(getDashboardStats(db, nextUser.id));
+    setDebts(listDebts(db, nextUser.id));
+    setFinancialAccounts(listFinancialAccounts(db, nextUser.id));
+    setIncome(listIncome(db, nextUser.id));
+    setNegotiations(listNegotiations(db, nextUser.id));
+    setPayments(listPayments(db, nextUser.id));
+    setPayoffSettings(getPayoffSettings(db, nextUser.id));
     return nextUser;
   }
 
   function handleLogout() {
+    if (shouldConfirmDiscardPayoffChanges()) {
+      openDiscardPayoffDialog(() => performLogout(), "Logout");
+      return;
+    }
+
+    performLogout();
+  }
+
+  function performLogout() {
     clearSessionUserId();
     setUser(undefined);
+    setPage("dashboard");
+    setPayoffHasUnsavedChanges(false);
+    setDebts([]);
+    setFinancialAccounts([]);
+    setIncome([]);
+    setNegotiations([]);
+    setPayments([]);
+    setPayoffSettings(emptyPayoffSettings);
     setStats(emptyStats);
+    window.history.replaceState(null, "", "/auth");
+  }
+
+  function navigateToPage(nextPage: AppPage, replace = false, skipPayoffConfirm = false) {
+    if (page === nextPage) return true;
+    if (!skipPayoffConfirm && shouldConfirmDiscardPayoffChanges(nextPage)) {
+      openDiscardPayoffDialog(() => performNavigation(nextPage, replace));
+      return false;
+    }
+
+    performNavigation(nextPage, replace);
+    return true;
+  }
+
+  function performNavigation(nextPage: AppPage, replace = false) {
+    setPage(nextPage);
+    if (page === "payoff") setPayoffHasUnsavedChanges(false);
+    if (replace) {
+      replaceUrl(nextPage);
+    } else {
+      window.history.pushState(null, "", pagePaths[nextPage]);
+    }
+  }
+
+  function openPayments(payment?: PaymentInput) {
+    const openPaymentPage = () => {
+      setPaymentDraft(payment);
+      performNavigation("payments");
+    };
+
+    if (shouldConfirmDiscardPayoffChanges("payments")) {
+      openDiscardPayoffDialog(openPaymentPage);
+      return;
+    }
+
+    openPaymentPage();
+  }
+
+  function openPaymentFromNegotiation(negotiation: Negotiation) {
+    if (!negotiation.debtId || negotiation.finalAgreementCents === null) return;
+    openPayments({
+      debtId: negotiation.debtId,
+      paymentType: "SETTLEMENT",
+      amount: centsToInput(negotiation.finalAgreementCents),
+      principal: "",
+      interestAndFees: "",
+      resultingBalance: "",
+      confirmationNumber: "",
+      paymentMethod: "",
+      paidDate: toDateInput(new Date().toISOString()),
+      updateDebtStatus: true,
+      notes: `Accepted negotiation agreement for ${negotiation.debtName ?? "this debt"}.`,
+    });
+  }
+
+  async function handleSaveDebt(input: DebtInput) {
+    if (!db || !user) throw new Error("GoXPlan is still starting. Please try again.");
+    await upsertDebt(db, user.id, input);
+    setDebts(listDebts(db, user.id));
+    setStats(getDashboardStats(db, user.id));
+  }
+
+  async function handleDeleteDebt(debtId: string) {
+    if (!db || !user) throw new Error("GoXPlan is still starting. Please try again.");
+    const debt = debts.find((item) => item.id === debtId);
+    openConfirmDialog({
+      confirmLabel: "Delete debt",
+      message: `${debt?.creditorName ?? "This debt"} will be removed from your debt list. This cannot be undone.`,
+      title: "Delete debt?",
+      onConfirm: async () => {
+        await deleteDebt(db, user.id, debtId);
+        setDebts(listDebts(db, user.id));
+        setStats(getDashboardStats(db, user.id));
+      },
+    });
+  }
+
+  async function handleImportKnownDebts() {
+    if (!db || !user) throw new Error("GoXPlan is still starting. Please try again.");
+
+    await syncKnownDebts(db, user.id);
+
+    setDebts(listDebts(db, user.id));
+    setStats(getDashboardStats(db, user.id));
+  }
+
+  async function handleExportBackup(): Promise<GoXPlanBackup> {
+    if (!db || !user) throw new Error("GoXPlan is still starting. Please try again.");
+    return exportUserBackup(db, user.id);
+  }
+
+  async function handleImportBackup(backup: unknown, mode: BackupImportMode): Promise<BackupImportSummary> {
+    if (!db || !user) throw new Error("GoXPlan is still starting. Please try again.");
+    const summary = await importUserBackup(db, user.id, backup, mode);
+    refreshWorkspace(db, user.id);
+    setPayoffHasUnsavedChanges(false);
+    return summary;
+  }
+
+  async function handleSaveIncome(input: IncomeInput) {
+    if (!db || !user) throw new Error("GoXPlan is still starting. Please try again.");
+    await upsertIncome(db, user.id, input);
+    setFinancialAccounts(listFinancialAccounts(db, user.id));
+    setIncome(listIncome(db, user.id));
+    setStats(getDashboardStats(db, user.id));
+  }
+
+  async function handleSaveNegotiation(input: NegotiationInput) {
+    if (!db || !user) throw new Error("GoXPlan is still starting. Please try again.");
+    await upsertNegotiation(db, user.id, input);
+    setNegotiations(listNegotiations(db, user.id));
+    setStats(getDashboardStats(db, user.id));
+  }
+
+  async function handleDeleteNegotiation(negotiationId: string) {
+    if (!db || !user) throw new Error("GoXPlan is still starting. Please try again.");
+    const negotiation = negotiations.find((item) => item.id === negotiationId);
+    openConfirmDialog({
+      confirmLabel: "Delete negotiation",
+      message: `${negotiation?.debtName ?? "This negotiation"} will be removed from your negotiation history.`,
+      title: "Delete negotiation?",
+      onConfirm: async () => {
+        await deleteNegotiation(db, user.id, negotiationId);
+        setNegotiations(listNegotiations(db, user.id));
+        setStats(getDashboardStats(db, user.id));
+      },
+    });
+  }
+
+  async function handleDeleteIncome(incomeId: string) {
+    if (!db || !user) throw new Error("GoXPlan is still starting. Please try again.");
+    const incomeRecord = income.find((item) => item.id === incomeId);
+    openConfirmDialog({
+      confirmLabel: "Delete income",
+      message: `${incomeRecord?.source ?? "This income record"} will be removed. Any linked account balance or trading profit will be restored.`,
+      title: "Delete income?",
+      onConfirm: async () => {
+        await deleteIncome(db, user.id, incomeId);
+        setFinancialAccounts(listFinancialAccounts(db, user.id));
+        setIncome(listIncome(db, user.id));
+        setStats(getDashboardStats(db, user.id));
+      },
+    });
+  }
+
+  async function handleSaveFinancialAccount(input: FinancialAccountInput) {
+    if (!db || !user) throw new Error("GoXPlan is still starting. Please try again.");
+    await upsertFinancialAccount(db, user.id, input);
+    setFinancialAccounts(listFinancialAccounts(db, user.id));
+    setIncome(listIncome(db, user.id));
+  }
+
+  async function handleDeleteFinancialAccount(accountId: string) {
+    if (!db || !user) throw new Error("GoXPlan is still starting. Please try again.");
+    const account = financialAccounts.find((item) => item.id === accountId);
+    openConfirmDialog({
+      confirmLabel: "Delete account",
+      message: `${account?.name ?? "This account"} will be removed. Income records stay saved, but they will no longer be linked to this account.`,
+      title: "Delete account?",
+      onConfirm: async () => {
+        await deleteFinancialAccount(db, user.id, accountId);
+        setFinancialAccounts(listFinancialAccounts(db, user.id));
+        setIncome(listIncome(db, user.id));
+      },
+    });
+  }
+
+  async function handleSavePayment(input: PaymentInput) {
+    if (!db || !user) throw new Error("GoXPlan is still starting. Please try again.");
+    await upsertPayment(db, user.id, input);
+    setDebts(listDebts(db, user.id));
+    setPayments(listPayments(db, user.id));
+    setStats(getDashboardStats(db, user.id));
+  }
+
+  async function handleDeletePayment(paymentId: string) {
+    if (!db || !user) throw new Error("GoXPlan is still starting. Please try again.");
+    const payment = payments.find((item) => item.id === paymentId);
+    openConfirmDialog({
+      confirmLabel: "Delete payment",
+      message: `${payment?.debtName ?? "This payment"} payment history will be removed and payoff progress will recalculate.`,
+      title: "Delete payment?",
+      onConfirm: async () => {
+        await deletePayment(db, user.id, paymentId);
+        setDebts(listDebts(db, user.id));
+        setPayments(listPayments(db, user.id));
+        setStats(getDashboardStats(db, user.id));
+      },
+    });
+  }
+
+  async function handleSavePayoffSettings(input: PayoffSettingsInput) {
+    if (!db || !user) throw new Error("GoXPlan is still starting. Please try again.");
+    setPayoffSettings(await upsertPayoffSettings(db, user.id, input));
+  }
+
+  const handlePayoffDirtyChange = useCallback((isDirty: boolean) => {
+    setPayoffHasUnsavedChanges(isDirty);
+  }, []);
+
+  function shouldConfirmDiscardPayoffChanges(nextPage?: AppPage) {
+    return page === "payoff" && payoffHasUnsavedChanges && nextPage !== "payoff";
+  }
+
+  function openDiscardPayoffDialog(action: () => void, confirmLabel = "Leave page") {
+    openConfirmDialog({
+      confirmLabel,
+      message: "Your payoff plan has unsaved changes. Leaving now will keep the saved plan as-is and discard the current edits.",
+      title: "Discard payoff changes?",
+      tone: "neutral",
+      onConfirm: async () => {
+        setPayoffHasUnsavedChanges(false);
+        action();
+      },
+    });
+  }
+
+  function openConfirmDialog(dialog: ConfirmDialogState) {
+    setConfirmDialog(dialog);
+  }
+
+  function refreshWorkspace(database: Database, userId: string) {
+    setStats(getDashboardStats(database, userId));
+    setDebts(listDebts(database, userId));
+    setFinancialAccounts(listFinancialAccounts(database, userId));
+    setIncome(listIncome(database, userId));
+    setNegotiations(listNegotiations(database, userId));
+    setPayments(listPayments(database, userId));
+    setPayoffSettings(getPayoffSettings(database, userId));
+  }
+
+  async function confirmDialogAction() {
+    if (!confirmDialog) return;
+    setIsConfirming(true);
+
+    try {
+      await confirmDialog.onConfirm();
+      setConfirmDialog(undefined);
+    } finally {
+      setIsConfirming(false);
+    }
   }
 
   if (isLoading) {
@@ -123,12 +508,182 @@ export function App() {
   }
 
   return (
-    <DashboardPage
-      user={user}
+    <>
+      <AppShell
+      activePage={page}
       stats={stats}
       theme={theme}
-      onToggleTheme={toggleTheme}
+      user={user}
       onLogout={handleLogout}
-    />
+      onNavigate={navigateToPage}
+      onToggleTheme={toggleTheme}
+    >
+      {page === "debts" ? (
+        <DebtsPage
+          debts={debts}
+          negotiations={negotiations}
+          payments={payments}
+          onImportKnownDebts={handleImportKnownDebts}
+          onSave={handleSaveDebt}
+          onDelete={handleDeleteDebt}
+        />
+      ) : page === "accounts" ? (
+        <AccountsPage
+          accounts={financialAccounts}
+          onSave={handleSaveFinancialAccount}
+          onDelete={handleDeleteFinancialAccount}
+        />
+      ) : page === "income" ? (
+        <IncomePage
+          financialAccounts={financialAccounts}
+          income={income}
+          onSave={handleSaveIncome}
+          onDelete={handleDeleteIncome}
+        />
+      ) : page === "payments" ? (
+        <PaymentsPage
+          debts={debts}
+          initialPayment={paymentDraft}
+          negotiations={negotiations}
+          payments={payments}
+          onSave={handleSavePayment}
+          onDelete={handleDeletePayment}
+          onInitialPaymentUsed={() => setPaymentDraft(undefined)}
+        />
+      ) : page === "negotiations" ? (
+        <NegotiationsPage
+          debts={debts}
+          negotiations={negotiations}
+          onSave={handleSaveNegotiation}
+          onDelete={handleDeleteNegotiation}
+          onUseForPayoff={openPaymentFromNegotiation}
+        />
+      ) : page === "reports" ? (
+        <ReportsPage
+          debts={debts}
+          income={income}
+          negotiations={negotiations}
+          payments={payments}
+          onOpenIncome={() => navigateToPage("income")}
+          onOpenPayments={() => openPayments()}
+        />
+      ) : page === "payoff" ? (
+        <PayoffPlanPage
+          debts={debts}
+          income={income}
+          negotiations={negotiations}
+          payments={payments}
+          settings={payoffSettings}
+          onOpenDebts={() => navigateToPage("debts")}
+          onOpenIncome={() => navigateToPage("income")}
+          onOpenPayments={openPayments}
+          onDirtyChange={handlePayoffDirtyChange}
+          onSaveSettings={handleSavePayoffSettings}
+        />
+      ) : page === "backup" ? (
+        <BackupPage
+          counts={{
+            accounts: financialAccounts.length,
+            debts: debts.length,
+            income: income.length,
+            negotiations: negotiations.length,
+            payments: payments.length,
+          }}
+          debts={debts}
+          onExportBackup={handleExportBackup}
+          onImportBackup={handleImportBackup}
+        />
+      ) : (
+        <DashboardPage
+          debts={debts}
+          negotiations={negotiations}
+          payments={payments}
+          user={user}
+          stats={stats}
+          onOpenDebts={() => navigateToPage("debts")}
+          onOpenNegotiations={() => navigateToPage("negotiations")}
+        />
+      )}
+      </AppShell>
+
+      {confirmDialog && (
+        <ConfirmDialog
+          confirmLabel={confirmDialog.confirmLabel}
+          isBusy={isConfirming}
+          message={confirmDialog.message}
+          tone={confirmDialog.tone}
+          title={confirmDialog.title}
+          onCancel={() => setConfirmDialog(undefined)}
+          onConfirm={() => void confirmDialogAction()}
+        />
+      )}
+    </>
   );
 }
+
+function getPageFromPath(): AppPage | undefined {
+  const path = window.location.pathname.replace(/\/+$/, "") || "/";
+  if (path === "/" || path === "/dashboard") return "dashboard";
+  if (path === "/debts") return "debts";
+  if (path === "/accounts") return "accounts";
+  if (path === "/income") return "income";
+  if (path === "/negotiations") return "negotiations";
+  if (path === "/payments") return "payments";
+  if (path === "/reports") return "reports";
+  if (path === "/payoff") return "payoff";
+  if (path === "/backup") return "backup";
+  return undefined;
+}
+
+function replaceUrl(page: AppPage) {
+  window.history.replaceState(null, "", pagePaths[page]);
+}
+
+async function syncKnownDebts(db: Database, userId: string) {
+  const existingDebts = listDebts(db, userId);
+
+  for (const [index, debt] of knownDebts.entries()) {
+    const stableId = `${userId}:known-debt:${index + 1}`;
+    const legacyMatch = existingDebts.find((existingDebt) => getKnownDebtIndex(existingDebt, userId) === index);
+    if (legacyMatch) continue;
+
+    await upsertDebt(db, userId, {
+      ...debt,
+      id: stableId,
+    });
+  }
+}
+
+function normalizeCreditorName(value: string) {
+  return value.trim().toLowerCase().replace(/[^a-z0-9]+/g, " ");
+}
+
+function centsToInput(cents: number) {
+  return (cents / 100).toFixed(2);
+}
+
+function toDateInput(value: string) {
+  return new Date(value).toISOString().slice(0, 10);
+}
+
+function getKnownDebtIndex(debt: Debt, userId: string) {
+  const stablePrefix = `${userId}:known-debt:`;
+  if (debt.id.startsWith(stablePrefix)) {
+    const index = Number(debt.id.slice(stablePrefix.length)) - 1;
+    if (Number.isInteger(index) && index >= 0 && index < knownDebts.length) return index;
+  }
+
+  return legacyCreditorNames.findIndex((names, index) => {
+    if (debt.priority !== knownDebts[index].priority) return false;
+    return names.includes(normalizeCreditorName(debt.creditorName));
+  });
+}
+
+const legacyCreditorNames = knownDebts.map((debt) => [normalizeCreditorName(debt.creditorName)]);
+
+legacyCreditorNames[1].push(normalizeCreditorName("Spring Oak"));
+legacyCreditorNames[2].push(normalizeCreditorName("National C"));
+legacyCreditorNames[8].push(normalizeCreditorName("Upstart / Loan"));
+legacyCreditorNames[9].push(normalizeCreditorName("Samsung"));
+legacyCreditorNames[10].push(normalizeCreditorName("Amazon Purchase"));
+legacyCreditorNames[12].push(normalizeCreditorName("Sezzle / Trellis"));
