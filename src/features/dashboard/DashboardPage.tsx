@@ -1,9 +1,21 @@
 import { ArrowRight, CalendarClock, CircleAlert, FileCheck2, Flag, Handshake, PiggyBank, TrendingDown, WalletCards } from "lucide-react";
 import type { CSSProperties } from "react";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { getDebtPriorityLevel, priorityLevelRanges } from "../../lib/debtPriority";
 import { buildFinancialSummary, getDebtObligationCents } from "../../lib/financialSummary";
-import type { AccountMovement, DashboardStats, Debt, FinancialAccount, Income, Negotiation, Payment, PublicUser } from "../../types";
+import { buildPayoffPeriodProgress, formatPayoffPeriodRange } from "../../lib/payoffPeriods";
+import type {
+  AccountMovement,
+  DashboardStats,
+  Debt,
+  FinancialAccount,
+  Income,
+  Negotiation,
+  Payment,
+  PayoffMilestone,
+  PayoffSettings,
+  PublicUser,
+} from "../../types";
 
 type DashboardPageProps = {
   accountMovements: AccountMovement[];
@@ -11,6 +23,8 @@ type DashboardPageProps = {
   debts: Debt[];
   income: Income[];
   negotiations: Negotiation[];
+  payoffMilestones: PayoffMilestone[];
+  payoffSettings: PayoffSettings;
   payments: Payment[];
   user: PublicUser;
   stats: DashboardStats;
@@ -20,7 +34,20 @@ type DashboardPageProps = {
 
 const emergencyPageSize = 4;
 
-export function DashboardPage({ accountMovements, accounts, debts, income, negotiations, payments, user, stats, onOpenDebts, onOpenNegotiations }: DashboardPageProps) {
+export function DashboardPage({
+  accountMovements,
+  accounts,
+  debts,
+  income,
+  negotiations,
+  payoffMilestones,
+  payoffSettings,
+  payments,
+  user,
+  stats,
+  onOpenDebts,
+  onOpenNegotiations,
+}: DashboardPageProps) {
   const [emergencyPage, setEmergencyPage] = useState(1);
   const financialSummary = buildFinancialSummary({ accountMovements, accounts, debts, income, negotiations, payments });
   const paymentSummary = financialSummary.paymentSummary;
@@ -33,8 +60,17 @@ export function DashboardPage({ accountMovements, accounts, debts, income, negot
   const obligationProgressBase = totalPaid + obligationAmount;
   const paidPercent = obligationProgressBase ? Math.min(100, Math.round((totalPaid / obligationProgressBase) * 100)) : 0;
   const topDebt = getTopDebt(debts);
-  const monthlyPaymentRows = buildMonthlyPaymentRows(payments);
-  const maxMonthlyPayment = Math.max(...monthlyPaymentRows.map((row) => row.total), 1);
+  const currentPayoffPeriod = useMemo(
+    () =>
+      payoffSettings.monthlyBudgetCents > 0
+        ? buildPayoffPeriodProgress(payoffSettings.budgetFrequency, payoffSettings.monthlyBudgetCents, payments)
+        : undefined,
+    [payments, payoffSettings.budgetFrequency, payoffSettings.monthlyBudgetCents],
+  );
+  const periodTrendRows = useMemo(
+    () => buildPeriodTrendRows(payoffMilestones, payments, payoffSettings),
+    [payments, payoffMilestones, payoffSettings.budgetFrequency, payoffSettings.monthlyBudgetCents],
+  );
   const negotiationAlerts = buildNegotiationAlerts(negotiations, debts);
   const collectionCount = financialSummary.collectionDebtCount;
   const pastDueCount = financialSummary.pastDueDebtCount;
@@ -274,53 +310,112 @@ export function DashboardPage({ accountMovements, accounts, debts, income, negot
         <article className="panel monthly-payments-panel">
           <div className="finance-section-heading">
             <div>
-              <h2>Monthly payments</h2>
+              <h2>Payoff period trend</h2>
             </div>
-            <span>Last 6 months</span>
+            <span>{formatBudgetFrequency(payoffSettings.budgetFrequency)}</span>
           </div>
 
-          <div className="monthly-payment-chart" aria-label="Monthly payment history chart">
-            {monthlyPaymentRows.map((row) => (
-              <div className="monthly-payment-column" key={row.key}>
-                <span className="monthly-payment-bar" style={{ height: `${row.total ? Math.max(8, (row.total / maxMonthlyPayment) * 100) : 3}%` }}>
-                  {row.total > 0 && <em>{formatCompactCurrency(row.total)}</em>}
-                  {row.total > 0 && (
-                    <>
-                      <i
-                        className="monthly-payment-principal"
-                        style={{ height: `${Math.max(8, Math.round((row.principal / row.total) * 100))}%` }}
-                      />
-                      {row.fees > 0 && (
-                        <i
-                          className="monthly-payment-fees"
-                          style={{ height: `${Math.max(6, Math.round((row.fees / row.total) * 100))}%` }}
-                        />
-                      )}
-                    </>
-                  )}
-                </span>
-                <strong>{row.label}</strong>
+          {periodTrendRows.length ? (
+            <>
+              <div className="period-trend-chart" aria-label="Payoff period goal progress chart">
+                {periodTrendRows.map((row) => (
+                  <div className="period-trend-column" key={row.key} title={`${row.range}: ${formatCurrency(row.paidCents)} of ${formatCurrency(row.targetCents)}`}>
+                    <div className="period-trend-bar-shell">
+                      <span className={`period-trend-bar ${row.status.toLowerCase()}`} style={{ height: `${row.paidCents ? Math.max(8, row.paidPercent) : 3}%` }}>
+                        {row.paidCents > 0 && <em>{row.paidPercent}%</em>}
+                      </span>
+                    </div>
+                    <strong>{row.label}</strong>
+                    <small>{row.status === "DONE" ? "Met" : row.status === "SHORT" ? "Short" : "Active"}</small>
+                  </div>
+                ))}
               </div>
-            ))}
-          </div>
-          <div className="monthly-payment-summary">
-            <span>{formatCurrency(paymentSummary.totalAmountCents)} total paid</span>
-            <span>{formatCurrency(totalPaid)} principal</span>
-            <span>{formatCurrency(paymentSummary.totalFeesCents)} fees</span>
-          </div>
+              <div className="period-trend-summary">
+                <span>
+                  Current goal <strong>{formatCurrency(currentPayoffPeriod?.targetCents ?? 0)}</strong>
+                </span>
+                <span>
+                  Paid now <strong>{formatCurrency(currentPayoffPeriod?.paidCents ?? 0)}</strong>
+                </span>
+                <span>
+                  Left <strong>{formatCurrency(currentPayoffPeriod?.remainingCents ?? 0)}</strong>
+                </span>
+              </div>
+            </>
+          ) : (
+            <div className="period-trend-empty">
+              <strong>No payoff budget yet.</strong>
+              <span>Set a weekly, monthly, or yearly budget on the payoff plan to start tracking milestones.</span>
+            </div>
+          )}
         </article>
       </section>
     </div>
   );
 }
 
-type MonthlyPaymentRow = {
-  fees: number;
+type PeriodTrendRow = {
   key: string;
   label: string;
-  principal: number;
-  total: number;
+  paidCents: number;
+  paidPercent: number;
+  range: string;
+  status: "ACTIVE" | "DONE" | "SHORT";
+  targetCents: number;
 };
+
+function buildPeriodTrendRows(milestones: PayoffMilestone[], payments: Payment[], settings: PayoffSettings): PeriodTrendRow[] {
+  if (settings.monthlyBudgetCents <= 0) return [];
+
+  const current = buildPayoffPeriodProgress(settings.budgetFrequency, settings.monthlyBudgetCents, payments);
+  const rows = new Map<string, PeriodTrendRow>();
+  const today = new Date().toISOString().slice(0, 10);
+
+  for (const milestone of milestones) {
+    if (milestone.budgetFrequency !== settings.budgetFrequency || milestone.targetCents <= 0) continue;
+    const key = getPeriodKey(milestone.budgetFrequency, milestone.periodStart, milestone.periodEnd);
+    const paidPercent = milestone.targetCents > 0 ? Math.min(100, Math.round((milestone.paidCents / milestone.targetCents) * 100)) : 0;
+    rows.set(key, {
+      key,
+      label: formatPeriodLabel(milestone.periodStart, settings.budgetFrequency),
+      paidCents: milestone.paidCents,
+      paidPercent,
+      range: formatPayoffPeriodRange(milestone.periodStart, milestone.periodEnd),
+      status: milestone.status === "DONE" ? "DONE" : milestone.periodEnd < today ? "SHORT" : "ACTIVE",
+      targetCents: milestone.targetCents,
+    });
+  }
+
+  const currentKey = getPeriodKey(settings.budgetFrequency, current.periodStart, current.periodEnd);
+  rows.set(currentKey, {
+    key: currentKey,
+    label: formatPeriodLabel(current.periodStart, settings.budgetFrequency),
+    paidCents: current.paidCents,
+    paidPercent: current.paidPercent,
+    range: formatPayoffPeriodRange(current.periodStart, current.periodEnd),
+    status: current.isDone ? "DONE" : "ACTIVE",
+    targetCents: current.targetCents,
+  });
+
+  return [...rows.values()].sort((left, right) => left.key.localeCompare(right.key)).slice(-6);
+}
+
+function getPeriodKey(frequency: PayoffSettings["budgetFrequency"], periodStart: string, periodEnd: string) {
+  return `${frequency}:${periodStart}:${periodEnd}`;
+}
+
+function formatPeriodLabel(periodStart: string, frequency: PayoffSettings["budgetFrequency"]) {
+  const date = new Date(`${periodStart}T12:00:00.000Z`);
+  if (frequency === "YEARLY") return String(date.getUTCFullYear());
+  if (frequency === "MONTHLY") return new Intl.DateTimeFormat("en-US", { month: "short", timeZone: "UTC" }).format(date);
+  return new Intl.DateTimeFormat("en-US", { day: "numeric", month: "short", timeZone: "UTC" }).format(date);
+}
+
+function formatBudgetFrequency(frequency: PayoffSettings["budgetFrequency"]) {
+  if (frequency === "WEEKLY") return "Weekly goal";
+  if (frequency === "YEARLY") return "Yearly goal";
+  return "Monthly goal";
+}
 
 type NegotiationAlert = {
   amountCents: number;
@@ -344,36 +439,6 @@ function getTopDebt(debts: Debt[]) {
 function getEmergencyNote(debt: Debt) {
   const note = [debt.reason, debt.notes].filter(Boolean).join(" | ");
   return note || "No notes yet.";
-}
-
-function buildMonthlyPaymentRows(payments: Payment[]): MonthlyPaymentRow[] {
-  const latestDate = payments.length
-    ? new Date(payments.reduce((latest, payment) => (payment.paidAt > latest ? payment.paidAt : latest), payments[0].paidAt))
-    : new Date();
-  const rows: MonthlyPaymentRow[] = [];
-
-  for (let offset = 5; offset >= 0; offset -= 1) {
-    const date = new Date(latestDate.getFullYear(), latestDate.getMonth() - offset, 1);
-    rows.push({
-      fees: 0,
-      key: getMonthKey(date),
-      label: new Intl.DateTimeFormat("en-US", { month: "short" }).format(date),
-      principal: 0,
-      total: 0,
-    });
-  }
-
-  const amounts = new Map(rows.map((row) => [row.key, { fees: 0, principal: 0, total: 0 }]));
-  for (const payment of payments) {
-    const key = getMonthKey(new Date(payment.paidAt));
-    const row = amounts.get(key);
-    if (!row) continue;
-    row.total += payment.amountCents;
-    row.principal += payment.principalCents ?? payment.amountCents;
-    row.fees += payment.interestAndFeesCents ?? 0;
-  }
-
-  return rows.map((row) => ({ ...row, ...(amounts.get(row.key) ?? { fees: 0, principal: 0, total: 0 }) }));
 }
 
 function buildNegotiationAlerts(negotiations: Negotiation[], debts: Debt[]): NegotiationAlert[] {
@@ -449,22 +514,8 @@ function isWithinDays(value: string, days: number) {
   return difference >= 0 && difference <= days * 24 * 60 * 60 * 1000;
 }
 
-function getMonthKey(date: Date) {
-  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`;
-}
-
 function formatCurrency(cents: number) {
   return new Intl.NumberFormat("en-US", { currency: "USD", style: "currency" }).format(cents / 100);
-}
-
-function formatCompactCurrency(cents: number) {
-  return new Intl.NumberFormat("en-US", {
-    compactDisplay: "short",
-    currency: "USD",
-    maximumFractionDigits: 1,
-    notation: "compact",
-    style: "currency",
-  }).format(cents / 100);
 }
 
 function formatShortDate(value: string) {

@@ -1890,6 +1890,140 @@ button:focus-visible {
   white-space: nowrap;
 }
 
+.period-trend-chart {
+  align-items: end;
+  background:
+    linear-gradient(var(--border) 1px, transparent 1px),
+    linear-gradient(90deg, var(--border) 1px, transparent 1px);
+  background-size: 100% 33.33%, 20% 100%;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  height: 210px;
+  padding: 18px 14px 12px;
+}
+
+.period-trend-column {
+  align-items: stretch;
+  display: grid;
+  gap: 6px;
+  grid-template-rows: 1fr auto auto;
+  min-width: 0;
+}
+
+.period-trend-bar-shell {
+  align-items: end;
+  display: flex;
+  min-height: 0;
+}
+
+.period-trend-bar {
+  background: color-mix(in srgb, var(--surface-strong) 35%, transparent);
+  border: 1px solid color-mix(in srgb, var(--surface-strong) 16%, var(--border));
+  border-radius: 8px 8px 2px 2px;
+  display: block;
+  min-height: 4px;
+  position: relative;
+  width: 100%;
+}
+
+.period-trend-bar.done {
+  background: color-mix(in srgb, var(--success) 55%, var(--surface-strong));
+  border-color: color-mix(in srgb, var(--success) 45%, var(--border));
+}
+
+.period-trend-bar.active {
+  background: color-mix(in srgb, var(--surface-strong) 58%, transparent);
+}
+
+.period-trend-bar.short {
+  background: color-mix(in srgb, var(--level-critical) 42%, var(--surface-strong));
+  border-color: color-mix(in srgb, var(--level-critical) 40%, var(--border));
+}
+
+.period-trend-bar em {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  color: var(--text);
+  font-size: 10px;
+  font-style: normal;
+  font-weight: 620;
+  left: 50%;
+  padding: 3px 6px;
+  position: absolute;
+  top: -26px;
+  transform: translateX(-50%);
+  white-space: nowrap;
+}
+
+.period-trend-column strong,
+.period-trend-column small {
+  overflow: hidden;
+  text-align: center;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.period-trend-column strong {
+  color: var(--text);
+  font-size: 11px;
+  font-weight: 620;
+}
+
+.period-trend-column small {
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 560;
+}
+
+.period-trend-summary {
+  display: grid;
+  gap: 8px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.period-trend-summary span,
+.period-trend-empty {
+  background: color-mix(in srgb, var(--surface-soft) 34%, transparent);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+
+.period-trend-summary span {
+  color: var(--muted);
+  display: flex;
+  font-size: 12px;
+  font-weight: 560;
+  gap: 8px;
+  justify-content: space-between;
+  min-width: 0;
+  padding: 8px 10px;
+}
+
+.period-trend-summary strong {
+  color: var(--text);
+  font-weight: 620;
+  white-space: nowrap;
+}
+
+.period-trend-empty {
+  align-content: center;
+  color: var(--muted);
+  display: grid;
+  gap: 6px;
+  min-height: 210px;
+  padding: 18px;
+}
+
+.period-trend-empty strong {
+  color: var(--text);
+  font-size: 15px;
+  font-weight: 620;
+}
+
 .debts-page {
   max-width: none;
 }
@@ -3830,6 +3964,26 @@ button:focus-visible {
   color: color-mix(in srgb, var(--warning) 82%, var(--text));
 }
 
+.payment-period-pill {
+  align-items: center;
+  background: color-mix(in srgb, var(--surface-soft) 55%, transparent);
+  border: 1px solid color-mix(in srgb, var(--border) 88%, transparent);
+  border-radius: 999px;
+  color: var(--muted);
+  display: inline-flex;
+  flex: 0 0 auto;
+  font-size: 10px;
+  font-weight: 620;
+  height: 22px;
+  padding: 0 8px;
+}
+
+.payment-period-pill.is-done {
+  background: color-mix(in srgb, var(--success) 13%, var(--surface));
+  border-color: color-mix(in srgb, var(--success) 34%, var(--border));
+  color: var(--success);
+}
+
 .payment-note-tooltip {
   flex: 0 0 auto;
   font-size: 11px;
@@ -4812,6 +4966,71 @@ button:focus-visible {
   min-width: 0;
   overflow-wrap: anywhere;
   text-align: right;
+}
+
+.payment-period-preview {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  display: grid;
+  gap: 8px;
+  padding: 10px;
+}
+
+.payment-period-preview.is-done {
+  background: color-mix(in srgb, var(--success) 8%, var(--surface));
+  border-color: color-mix(in srgb, var(--success) 28%, var(--border));
+}
+
+.payment-period-preview-head,
+.payment-period-preview-values {
+  align-items: center;
+  display: flex;
+  gap: 10px;
+  justify-content: space-between;
+  min-width: 0;
+}
+
+.payment-period-preview-head span,
+.payment-period-preview-values span {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 620;
+}
+
+.payment-period-preview-head strong,
+.payment-period-preview-values strong {
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 650;
+  white-space: nowrap;
+}
+
+.payment-period-preview-meter {
+  background: color-mix(in srgb, var(--surface-soft) 82%, transparent);
+  border-radius: 999px;
+  height: 7px;
+  overflow: hidden;
+}
+
+.payment-period-preview-meter span {
+  background: var(--text);
+  border-radius: inherit;
+  display: block;
+  height: 100%;
+  max-width: 100%;
+}
+
+.payment-period-preview.is-done .payment-period-preview-meter span {
+  background: var(--success);
+}
+
+.payment-period-preview p {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 560;
+  line-height: 1.35;
+  margin: 0;
 }
 
 .payment-preview-success {

@@ -2,7 +2,8 @@ import { AlertTriangle, ArrowRight, CalendarDays, CheckCircle2, CreditCard, Edit
 import { type FormEvent, useEffect, useMemo, useState } from "react";
 import { ConfirmDialog } from "../../components/ConfirmDialog";
 import { buildNegotiationInsights, getPlanningTarget, type DebtNegotiationInsight } from "../../lib/negotiationTargets";
-import type { Debt, FinancialAccount, Negotiation, Payment, PaymentInput, PaymentType } from "../../types";
+import { buildPayoffPeriodProgress, formatPayoffPeriodRange } from "../../lib/payoffPeriods";
+import type { Debt, FinancialAccount, Negotiation, Payment, PaymentInput, PaymentType, PayoffSettings } from "../../types";
 
 type PaymentsPageProps = {
   debts: Debt[];
@@ -10,6 +11,7 @@ type PaymentsPageProps = {
   initialPayment?: PaymentInput;
   negotiations: Negotiation[];
   payments: Payment[];
+  payoffSettings: PayoffSettings;
   onSave: (input: PaymentInput) => Promise<void>;
   onDelete: (paymentId: string) => Promise<void>;
   onInitialPaymentUsed?: () => void;
@@ -41,7 +43,17 @@ const paymentTypeLabels: Record<PaymentType, string> = {
   PAYOFF: "Payoff",
 };
 
-export function PaymentsPage({ debts, financialAccounts, initialPayment, negotiations, payments, onSave, onDelete, onInitialPaymentUsed }: PaymentsPageProps) {
+export function PaymentsPage({
+  debts,
+  financialAccounts,
+  initialPayment,
+  negotiations,
+  payments,
+  payoffSettings,
+  onSave,
+  onDelete,
+  onInitialPaymentUsed,
+}: PaymentsPageProps) {
   const paymentAccounts = useMemo(() => financialAccounts.filter((account) => account.accountType !== "TRADING"), [financialAccounts]);
   const [form, setForm] = useState<PaymentInput>(() => ({ ...emptyForm, accountId: paymentAccounts[0]?.id ?? "", debtId: debts[0]?.id ?? "" }));
   const [error, setError] = useState("");
@@ -76,12 +88,24 @@ export function PaymentsPage({ debts, financialAccounts, initialPayment, negotia
     };
   }, [payments]);
 
+  const currentPayoffProgress = useMemo(
+    () =>
+      payoffSettings.monthlyBudgetCents > 0
+        ? buildPayoffPeriodProgress(payoffSettings.budgetFrequency, payoffSettings.monthlyBudgetCents, payments)
+        : undefined,
+    [payments, payoffSettings.budgetFrequency, payoffSettings.monthlyBudgetCents],
+  );
+  const paymentPayoffTags = useMemo(
+    () => buildPaymentPayoffTags(payments, payoffSettings),
+    [payments, payoffSettings.budgetFrequency, payoffSettings.monthlyBudgetCents],
+  );
   const selectedDebt = debts.find((debt) => debt.id === form.debtId);
   const selectedAccount = paymentAccounts.find((account) => account.id === form.accountId);
   const negotiationInsights = useMemo(() => buildNegotiationInsights(negotiations), [negotiations]);
   const previewSummary = useMemo(() => summarizePayments(payments, form.id), [form.id, payments]);
   const selectedInsight = selectedDebt ? negotiationInsights.get(selectedDebt.id) : undefined;
   const preview = selectedDebt ? getPaymentPreview(selectedDebt, form, previewSummary, selectedInsight) : undefined;
+  const payoffPreview = useMemo(() => buildPaymentPayoffPreview(payoffSettings, payments, form), [form, payments, payoffSettings]);
   const canUpdateDebtStatus = Boolean(
     selectedDebt && selectedDebt.status !== "SETTLED" && preview && (form.paymentType === "SETTLEMENT" || form.paymentType === "PAYOFF"),
   );
@@ -193,8 +217,8 @@ export function PaymentsPage({ debts, financialAccounts, initialPayment, negotia
           <strong>{formatCurrency(totals.principal)}</strong>
         </article>
         <article>
-          <span>This month</span>
-          <strong>{formatCurrency(totals.monthTotal)}</strong>
+          <span>{currentPayoffProgress?.label ?? "This month"}</span>
+          <strong>{formatCurrency(currentPayoffProgress?.paidCents ?? totals.monthTotal)}</strong>
         </article>
         <article>
           <span>Debts touched</span>
@@ -228,78 +252,87 @@ export function PaymentsPage({ debts, financialAccounts, initialPayment, negotia
             </div>
 
             <div className="payment-lines">
-              {payments.map((payment) => (
-                <article className="payment-line" key={payment.id}>
-                  <div className="payment-main">
-                    <ReceiptText size={17} />
-                    <div>
-                      <div className="payment-title-row">
-                        <strong>{payment.debtName ?? "Removed debt"}</strong>
-                        <span className={`payment-type-pill payment-type-${payment.paymentType.toLowerCase()}`}>
-                          {paymentTypeLabels[payment.paymentType]}
-                        </span>
-                        {payment.notes && (
-                          <span
-                            aria-label={`Notes for payment to ${payment.debtName ?? "debt"}`}
-                            className="note-tooltip payment-note-tooltip"
-                            data-tooltip={payment.notes}
-                            tabIndex={0}
-                            title={payment.notes}
-                          >
-                            !
+              {payments.map((payment) => {
+                const payoffTag = paymentPayoffTags.get(payment.id);
+
+                return (
+                  <article className="payment-line" key={payment.id}>
+                    <div className="payment-main">
+                      <ReceiptText size={17} />
+                      <div>
+                        <div className="payment-title-row">
+                          <strong>{payment.debtName ?? "Removed debt"}</strong>
+                          <span className={`payment-type-pill payment-type-${payment.paymentType.toLowerCase()}`}>
+                            {paymentTypeLabels[payment.paymentType]}
                           </span>
-                        )}
-                      </div>
-                      <div className="payment-meta-strip">
-                        {getPaymentMetaChips(payment).map((chip) => (
-                          <span key={chip}>{chip}</span>
-                        ))}
+                          {payoffTag && (
+                            <span className={`payment-period-pill${payoffTag.isDone ? " is-done" : ""}`} title={payoffTag.title}>
+                              {payoffTag.label}
+                            </span>
+                          )}
+                          {payment.notes && (
+                            <span
+                              aria-label={`Notes for payment to ${payment.debtName ?? "debt"}`}
+                              className="note-tooltip payment-note-tooltip"
+                              data-tooltip={payment.notes}
+                              tabIndex={0}
+                              title={payment.notes}
+                            >
+                              !
+                            </span>
+                          )}
+                        </div>
+                        <div className="payment-meta-strip">
+                          {getPaymentMetaChips(payment).map((chip) => (
+                            <span key={chip}>{chip}</span>
+                          ))}
+                        </div>
                       </div>
                     </div>
-                  </div>
 
-                  <div className="payment-money">
-                    <span>Total paid</span>
-                    <strong>{formatCurrency(payment.amountCents)}</strong>
-                    {payment.interestAndFeesCents !== null && payment.interestAndFeesCents > 0 && (
-                      <em>{formatCurrency(payment.principalCents ?? 0)} principal</em>
-                    )}
-                  </div>
+                    <div className="payment-money">
+                      <span>Total paid</span>
+                      <strong>{formatCurrency(payment.amountCents)}</strong>
+                      {payment.interestAndFeesCents !== null && payment.interestAndFeesCents > 0 && (
+                        <em>{formatCurrency(payment.principalCents ?? 0)} principal</em>
+                      )}
+                    </div>
 
-                  <div className="payment-date">
-                    <CalendarDays size={15} />
-                    <span>{formatDate(payment.paidAt)}</span>
-                  </div>
+                    <div className="payment-date">
+                      <CalendarDays size={15} />
+                      <span>{formatDate(payment.paidAt)}</span>
+                    </div>
 
-                  <div className="payment-detail">
-                    <span>Fees</span>
-                    <strong>
-                      {payment.interestAndFeesCents === null || payment.interestAndFeesCents <= 0
-                        ? "-"
-                        : formatCurrency(payment.interestAndFeesCents)}
-                    </strong>
-                  </div>
+                    <div className="payment-detail">
+                      <span>Fees</span>
+                      <strong>
+                        {payment.interestAndFeesCents === null || payment.interestAndFeesCents <= 0
+                          ? "-"
+                          : formatCurrency(payment.interestAndFeesCents)}
+                      </strong>
+                    </div>
 
-                  <div className="payment-detail">
-                    <span>Remaining</span>
-                    <strong>{payment.resultingBalanceCents === null ? "Auto" : formatCurrency(payment.resultingBalanceCents)}</strong>
-                  </div>
+                    <div className="payment-detail">
+                      <span>Remaining</span>
+                      <strong>{payment.resultingBalanceCents === null ? "Auto" : formatCurrency(payment.resultingBalanceCents)}</strong>
+                    </div>
 
-                  <div className="table-actions">
-                    <button className="icon-button" type="button" onClick={() => editPayment(payment)} aria-label={`Edit payment for ${payment.debtName ?? "debt"}`}>
-                      <Edit3 size={15} />
-                    </button>
-                    <button
-                      className="icon-button bad-entry"
-                      type="button"
-                      onClick={() => setPaymentToDelete(payment)}
-                      aria-label={`Delete payment for ${payment.debtName ?? "debt"}`}
-                    >
-                      <Trash2 size={15} />
-                    </button>
-                  </div>
-                </article>
-              ))}
+                    <div className="table-actions">
+                      <button className="icon-button" type="button" onClick={() => editPayment(payment)} aria-label={`Edit payment for ${payment.debtName ?? "debt"}`}>
+                        <Edit3 size={15} />
+                      </button>
+                      <button
+                        className="icon-button bad-entry"
+                        type="button"
+                        onClick={() => setPaymentToDelete(payment)}
+                        aria-label={`Delete payment for ${payment.debtName ?? "debt"}`}
+                      >
+                        <Trash2 size={15} />
+                      </button>
+                    </div>
+                  </article>
+                );
+              })}
             </div>
           </div>
         ) : (
@@ -477,6 +510,33 @@ export function PaymentsPage({ debts, financialAccounts, initialPayment, negotia
                         </div>
                       </div>
 
+                      {payoffPreview && (
+                        <div className={`payment-period-preview${payoffPreview.after.isDone ? " is-done" : ""}`}>
+                          <div className="payment-period-preview-head">
+                            <span>Payoff period</span>
+                            <strong>{formatPayoffPeriodRange(payoffPreview.after.periodStart, payoffPreview.after.periodEnd)}</strong>
+                          </div>
+                          <div className="payment-period-preview-meter" aria-hidden="true">
+                            <span style={{ width: `${payoffPreview.after.paidPercent}%` }} />
+                          </div>
+                          <div className="payment-period-preview-values">
+                            <span>
+                              After payment <strong>{formatCurrency(payoffPreview.after.paidCents)}</strong>
+                            </span>
+                            <span>
+                              Goal <strong>{formatCurrency(payoffPreview.after.targetCents)}</strong>
+                            </span>
+                          </div>
+                          <p>
+                            {payoffPreview.after.isDone && !payoffPreview.before.isDone
+                              ? `This payment completes the ${formatFrequencyName(payoffPreview.after.budgetFrequency)} goal.`
+                              : payoffPreview.after.isDone
+                                ? "This period goal is complete."
+                                : `${formatCurrency(payoffPreview.after.remainingCents)} left for this period.`}
+                          </p>
+                        </div>
+                      )}
+
                       {preview.afterObligationCents === 0 && preview.paymentAmountCents > 0 && (
                         <div className="payment-preview-success">
                           <CheckCircle2 size={17} />
@@ -624,6 +684,73 @@ function getPaymentMetaChips(payment: Payment) {
   if (payment.confirmationNumber) chips.push(`Confirmation ${payment.confirmationNumber}`);
   if (payment.principalCents !== null) chips.push(`${formatCurrency(payment.principalCents)} principal`);
   return chips.length ? chips : ["No method saved"];
+}
+
+function buildPaymentPayoffTags(payments: Payment[], settings: PayoffSettings) {
+  const tags = new Map<string, { isDone: boolean; label: string; title: string }>();
+  if (settings.monthlyBudgetCents <= 0) return tags;
+
+  const activePeriod = buildPayoffPeriodProgress(settings.budgetFrequency, settings.monthlyBudgetCents, payments);
+
+  for (const payment of payments) {
+    const progress = buildPayoffPeriodProgress(settings.budgetFrequency, settings.monthlyBudgetCents, payments, new Date(payment.paidAt));
+    const isCurrentPeriod = progress.periodStart === activePeriod.periodStart && progress.periodEnd === activePeriod.periodEnd;
+    const label = progress.isDone ? "Goal met" : isCurrentPeriod ? progress.label : formatPayoffPeriodRange(progress.periodStart, progress.periodEnd);
+    tags.set(payment.id, {
+      isDone: progress.isDone,
+      label,
+      title: `${formatPayoffPeriodRange(progress.periodStart, progress.periodEnd)} - ${formatCurrency(progress.paidCents)} of ${formatCurrency(progress.targetCents)}`,
+    });
+  }
+
+  return tags;
+}
+
+function buildPaymentPayoffPreview(settings: PayoffSettings, payments: Payment[], input: PaymentInput) {
+  if (settings.monthlyBudgetCents <= 0 || !input.paidDate) return undefined;
+
+  const paymentAmountCents = parseMoneyInput(input.amount);
+  const paidAt = toIsoDateFromInput(input.paidDate);
+  const referenceDate = new Date(paidAt);
+  const basePayments = payments.filter((payment) => payment.id !== input.id);
+  const before = buildPayoffPeriodProgress(settings.budgetFrequency, settings.monthlyBudgetCents, basePayments, referenceDate);
+  const previewPayments =
+    paymentAmountCents > 0
+      ? [
+          ...basePayments,
+          {
+            id: input.id ?? "draft-payment",
+            userId: "",
+            debtId: input.debtId || null,
+            debtName: null,
+            accountId: input.accountId || null,
+            accountName: null,
+            accountType: null,
+            paymentType: input.paymentType,
+            amountCents: paymentAmountCents,
+            principalCents: input.principal.trim() ? parseMoneyInput(input.principal) : null,
+            interestAndFeesCents: input.interestAndFees.trim() ? parseMoneyInput(input.interestAndFees) : null,
+            resultingBalanceCents: input.resultingBalance.trim() ? parseMoneyInput(input.resultingBalance) : null,
+            confirmationNumber: "",
+            paymentMethod: "",
+            paidAt,
+            notes: "",
+            createdAt: "",
+            updatedAt: "",
+          } satisfies Payment,
+        ]
+      : basePayments;
+  const after = buildPayoffPeriodProgress(settings.budgetFrequency, settings.monthlyBudgetCents, previewPayments, referenceDate);
+
+  return { after, before };
+}
+
+function toIsoDateFromInput(value: string) {
+  return /^\d{4}-\d{2}-\d{2}$/.test(value) ? new Date(`${value}T12:00:00.000Z`).toISOString() : new Date().toISOString();
+}
+
+function formatFrequencyName(frequency: PayoffSettings["budgetFrequency"]) {
+  return frequency === "WEEKLY" ? "weekly" : frequency === "YEARLY" ? "yearly" : "monthly";
 }
 
 function getAccountOptionLabel(account: FinancialAccount) {

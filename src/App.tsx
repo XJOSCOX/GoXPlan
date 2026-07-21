@@ -636,6 +636,7 @@ export function App() {
           initialPayment={paymentDraft}
           negotiations={negotiations}
           payments={payments}
+          payoffSettings={payoffSettings}
           onSave={handleSavePayment}
           onDelete={handleDeletePayment}
           onInitialPaymentUsed={() => setPaymentDraft(undefined)}
@@ -703,6 +704,8 @@ export function App() {
           debts={debts}
           income={income}
           negotiations={negotiations}
+          payoffMilestones={payoffMilestones}
+          payoffSettings={payoffSettings}
           payments={payments}
           user={user}
           stats={stats}
