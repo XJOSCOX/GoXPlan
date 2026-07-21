@@ -91,6 +91,9 @@ type Income = {
   accountId: string | null;
   accountName: string | null;
   accountType: FinancialAccountType | null;
+  destinationAccountId: string | null;
+  destinationAccountName: string | null;
+  destinationAccountType: FinancialAccountType | null;
   source: string;
   sourceType: "EMPLOYMENT" | "TOPSTEP" | "BUSINESS" | "REFUND" | "BENEFITS" | "OTHER";
   amountCents: number;
@@ -117,8 +120,10 @@ type Income = {
 
 Income rollback behavior:
 
-- Saving an edited income restores the previous linked account effect first, then applies the new values.
-- Deleting income restores linked bank balances or trading account profits.
+- `accountId` is the source account, such as a brokerage or trading account.
+- `destinationAccountId` is the receiving bank/cash account where net income is deposited.
+- Saving an edited income restores the previous source and destination account effects first, then applies the new values.
+- Deleting income restores linked bank balances or trading account profits and removes the deposited net amount from the destination account.
 - For copied trading accounts, the entered amount is per account and total payout is calculated by account count.
 
 ## Payments
@@ -129,6 +134,9 @@ type Payment = {
   userId: string;
   debtId: string | null;
   debtName: string | null;
+  accountId: string | null;
+  accountName: string | null;
+  accountType: FinancialAccountType | null;
   paymentType: "REGULAR" | "MINIMUM" | "CATCH_UP" | "EXTRA" | "SETTLEMENT" | "PAYOFF";
   amountCents: number;
   principalCents: number | null;
@@ -147,9 +155,10 @@ type Payment = {
 
 Payment safety:
 
+- `accountId` is the cash/bank account used to make the payment.
 - Payments store the debt status before and after the payment.
-- Editing a payment restores the previous debt status snapshot first.
-- Deleting a payment recalculates debt/payment views without using native browser confirms.
+- Editing a payment restores the previous debt status and paid-from account movement first.
+- Deleting a payment restores the linked account balance and debt snapshot without using native browser confirms.
 
 ## Negotiations
 

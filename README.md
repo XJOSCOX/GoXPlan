@@ -13,8 +13,8 @@ The current local build includes:
 - Dashboard with current obligations, priority exposure, emergency focus, and progress placeholders
 - Debt register with priority levels, dates, obligations, notes, pagination, editing, and deleting
 - Accounts page for bank, trading, and other money sources
-- Income page with trading payout rules, copied accounts, fees, dates, edit rollback, and delete rollback
-- Payments page with balance/status snapshots for safer editing and deleting
+- Income page with trading payout rules, destination deposits, fees, dates, edit rollback, and delete rollback
+- Payments page with paid-from accounts plus balance/status snapshots for safer editing and deleting
 - Negotiations page for offers, follow-ups, agreements, and pay-for-delete notes
 - Payoff plan page with budget frequency, reserve, recommendations, and payoff order
 - Reports page and CSV exports

@@ -2,11 +2,22 @@ import { AlertTriangle, ArrowRight, CalendarClock, CheckCircle2, Route, Save, Sh
 import { type FormEvent, useEffect, useMemo, useState } from "react";
 import { getDebtPriorityLevel } from "../../lib/debtPriority";
 import { buildNegotiationInsights, getNegotiationDeadlineTime, getPlanningTarget, type DebtNegotiationInsight } from "../../lib/negotiationTargets";
-import type { Debt, Income, Negotiation, Payment, PaymentInput, PaymentType, PayoffBudgetFrequency, PayoffSettings, PayoffSettingsInput, PayoffStrategy } from "../../types";
+import type {
+  Debt,
+  FinancialAccount,
+  Negotiation,
+  Payment,
+  PaymentInput,
+  PaymentType,
+  PayoffBudgetFrequency,
+  PayoffSettings,
+  PayoffSettingsInput,
+  PayoffStrategy,
+} from "../../types";
 
 type PayoffPlanPageProps = {
   debts: Debt[];
-  income: Income[];
+  financialAccounts: FinancialAccount[];
   negotiations: Negotiation[];
   payments: Payment[];
   settings: PayoffSettings;
@@ -65,7 +76,7 @@ const budgetFrequencyCopy: Record<PayoffBudgetFrequency, { estimate: string; sin
 
 export function PayoffPlanPage({
   debts,
-  income,
+  financialAccounts,
   negotiations,
   payments,
   settings,
@@ -105,19 +116,18 @@ export function PayoffPlanPage({
     return () => window.removeEventListener("beforeunload", warnBeforeUnload);
   }, [hasUnsavedChanges]);
 
-  const incomeTotals = useMemo(
-    () => ({
-      allocated: income.reduce((sum, item) => sum + item.allocatedAmountCents, 0),
-      available: income.reduce((sum, item) => sum + item.remainingAmountCents, 0),
-      net: income.reduce((sum, item) => sum + item.netAmountCents, 0),
-    }),
-    [income],
+  const availableCashCents = useMemo(
+    () =>
+      financialAccounts
+        .filter((account) => account.accountType !== "TRADING")
+        .reduce((sum, account) => sum + account.availableBalanceCents, 0),
+    [financialAccounts],
   );
 
   const draftBudgetCents = parseMoneyInputLoose(form.monthlyBudget) ?? 0;
   const draftEmergencyReserveCents = parseMoneyInputLoose(form.emergencyReserve) ?? 0;
   const draftMaxAccountsPerRound = parseMaxAccountsInput(form.maxAccountsPerRound);
-  const safeAvailableCash = Math.max(0, incomeTotals.available - draftEmergencyReserveCents);
+  const safeAvailableCash = Math.max(0, availableCashCents - draftEmergencyReserveCents);
   const planBudgetCents = draftBudgetCents > 0 ? draftBudgetCents : safeAvailableCash;
   const manualAllocationCents = useMemo(() => parseEditableManualAllocations(form.manualAllocations), [form.manualAllocations]);
   const negotiationInsights = useMemo(() => buildNegotiationInsights(negotiations), [negotiations]);
@@ -147,8 +157,8 @@ export function PayoffPlanPage({
     : "";
   const budgetWarning =
     budgetValidation ||
-    (incomeTotals.available < 0
-      ? `Income is overassigned by ${formatCurrency(Math.abs(incomeTotals.available))}.`
+    (availableCashCents < 0
+      ? `Cash accounts are negative by ${formatCurrency(Math.abs(availableCashCents))}.`
       : draftBudgetCents > safeAvailableCash
         ? `Manual budget is ${formatCurrency(draftBudgetCents - safeAvailableCash)} above safe cash. Keep it if you are funding payments another way.`
         : "");
@@ -339,7 +349,7 @@ export function PayoffPlanPage({
               <div>
                 <CalendarClock size={16} />
                 <span>Available cash</span>
-                <strong>{formatCurrency(incomeTotals.available)}</strong>
+                <strong>{formatCurrency(availableCashCents)}</strong>
               </div>
               <div>
                 <span>Safe to plan</span>
@@ -725,6 +735,7 @@ function getPlanSavingsCents(debt: PlanDebt) {
 function createPaymentDraft(debt: PlanDebt, allocationCents?: number): PaymentInput {
   const amountCents = allocationCents || debt.allocationCents || debt.targetRemainingCents;
   return {
+    accountId: "",
     debtId: debt.id,
     paymentType: getPaymentTypeForTarget(debt),
     amount: centsToInput(amountCents),

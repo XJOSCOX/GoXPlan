@@ -98,6 +98,9 @@ export type Income = {
   accountId: string | null;
   accountName: string | null;
   accountType: FinancialAccountType | null;
+  destinationAccountId: string | null;
+  destinationAccountName: string | null;
+  destinationAccountType: FinancialAccountType | null;
   source: string;
   sourceType: IncomeSourceType;
   amountCents: number;
@@ -159,6 +162,7 @@ export type FinancialAccountInput = {
 export type IncomeInput = {
   id?: string;
   accountId: string;
+  destinationAccountId: string;
   source: string;
   sourceType: IncomeSourceType;
   grossAmount: string;
@@ -179,6 +183,9 @@ export type Payment = {
   userId: string;
   debtId: string | null;
   debtName: string | null;
+  accountId: string | null;
+  accountName: string | null;
+  accountType: FinancialAccountType | null;
   paymentType: PaymentType;
   amountCents: number;
   principalCents: number | null;
@@ -196,6 +203,7 @@ export type PaymentType = "REGULAR" | "MINIMUM" | "CATCH_UP" | "EXTRA" | "SETTLE
 
 export type PaymentInput = {
   id?: string;
+  accountId: string;
   debtId: string;
   paymentType: PaymentType;
   amount: string;

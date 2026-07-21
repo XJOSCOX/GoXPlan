@@ -272,6 +272,7 @@ export function App() {
   function openPaymentFromNegotiation(negotiation: Negotiation) {
     if (!negotiation.debtId || negotiation.finalAgreementCents === null) return;
     openPayments({
+      accountId: "",
       debtId: negotiation.debtId,
       paymentType: "SETTLEMENT",
       amount: centsToInput(negotiation.finalAgreementCents),
@@ -402,6 +403,7 @@ export function App() {
     if (!db || !user) throw new Error("GoXPlan is still starting. Please try again.");
     await upsertPayment(db, user.id, input);
     setDebts(listDebts(db, user.id));
+    setFinancialAccounts(listFinancialAccounts(db, user.id));
     setPayments(listPayments(db, user.id));
     setStats(getDashboardStats(db, user.id));
   }
@@ -410,6 +412,7 @@ export function App() {
     if (!db || !user) throw new Error("GoXPlan is still starting. Please try again.");
     await deletePayment(db, user.id, paymentId);
     setDebts(listDebts(db, user.id));
+    setFinancialAccounts(listFinancialAccounts(db, user.id));
     setPayments(listPayments(db, user.id));
     setStats(getDashboardStats(db, user.id));
   }
@@ -535,6 +538,7 @@ export function App() {
       ) : page === "payments" ? (
         <PaymentsPage
           debts={debts}
+          financialAccounts={financialAccounts}
           initialPayment={paymentDraft}
           negotiations={negotiations}
           payments={payments}
@@ -552,6 +556,7 @@ export function App() {
         />
       ) : page === "reports" ? (
         <ReportsPage
+          accounts={financialAccounts}
           debts={debts}
           income={income}
           negotiations={negotiations}
@@ -562,7 +567,7 @@ export function App() {
       ) : page === "payoff" ? (
         <PayoffPlanPage
           debts={debts}
-          income={income}
+          financialAccounts={financialAccounts}
           negotiations={negotiations}
           payments={payments}
           settings={payoffSettings}

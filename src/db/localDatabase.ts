@@ -89,6 +89,7 @@ const backupTables = {
     "id",
     "user_id",
     "account_id",
+    "destination_account_id",
     "source",
     "source_type",
     "amount_cents",
@@ -138,6 +139,7 @@ const backupTables = {
     "id",
     "user_id",
     "debt_id",
+    "account_id",
     "payment_type",
     "amount_cents",
     "principal_cents",
@@ -384,9 +386,11 @@ export function listIncome(db: Database, userId: string): Income[] {
         , income.source_type, income.gross_amount_cents, income.fees_cents, income.tax_withholding_cents, income.net_amount_cents, income.allocated_amount_cents,
         income.topstep_account_count, income.topstep_copied_accounts, income.topstep_payout_scope, income.topstep_selected_account,
         income.topstep_profit_per_account_cents, income.topstep_total_profit_cents, income.topstep_withdrawable_cents, income.topstep_fee_cents,
-        income.account_id, financial_accounts.name, financial_accounts.account_type
+        income.account_id, source_account.name, source_account.account_type,
+        income.destination_account_id, destination_account.name, destination_account.account_type
       FROM income
-      LEFT JOIN financial_accounts ON financial_accounts.id = income.account_id AND financial_accounts.user_id = income.user_id
+      LEFT JOIN financial_accounts AS source_account ON source_account.id = income.account_id AND source_account.user_id = income.user_id
+      LEFT JOIN financial_accounts AS destination_account ON destination_account.id = income.destination_account_id AND destination_account.user_id = income.user_id
       WHERE income.user_id = ?
       ORDER BY income.received_at DESC, income.updated_at DESC
     `,
@@ -418,9 +422,11 @@ export function listPayments(db: Database, userId: string): Payment[] {
         payments.id, payments.user_id, payments.debt_id, debts.creditor_name, payments.amount_cents,
         payments.paid_at, payments.notes, payments.created_at, payments.updated_at,
         payments.payment_type, payments.principal_cents, payments.interest_and_fees_cents,
-        payments.resulting_balance_cents, payments.confirmation_number, payments.payment_method
+        payments.resulting_balance_cents, payments.confirmation_number, payments.payment_method,
+        payments.account_id, financial_accounts.name, financial_accounts.account_type
       FROM payments
       LEFT JOIN debts ON debts.id = payments.debt_id AND debts.user_id = payments.user_id
+      LEFT JOIN financial_accounts ON financial_accounts.id = payments.account_id AND financial_accounts.user_id = payments.user_id
       WHERE payments.user_id = ?
       ORDER BY payments.paid_at DESC, payments.updated_at DESC
     `,
@@ -680,6 +686,8 @@ export async function upsertFinancialAccount(db: Database, userId: string, input
 
 export async function deleteFinancialAccount(db: Database, userId: string, accountId: string) {
   db.run("UPDATE income SET account_id = NULL WHERE user_id = ? AND account_id = ?", [userId, accountId]);
+  db.run("UPDATE income SET destination_account_id = NULL WHERE user_id = ? AND destination_account_id = ?", [userId, accountId]);
+  db.run("UPDATE payments SET account_id = NULL WHERE user_id = ? AND account_id = ?", [userId, accountId]);
   db.run("DELETE FROM financial_accounts WHERE id = ? AND user_id = ?", [accountId, userId]);
   await saveDatabase(db);
 }
@@ -690,7 +698,9 @@ export async function upsertIncome(db: Database, userId: string, input: IncomeIn
   const existing = input.id ? findIncomeById(db, userId, input.id) : undefined;
   const amountPerAccountCents = parseMoneyToCents(input.grossAmount);
   const accountId = input.accountId.trim() || null;
+  const destinationAccountId = input.destinationAccountId.trim() || null;
   const account = accountId ? findFinancialAccountById(db, userId, accountId) : undefined;
+  const destinationAccount = destinationAccountId ? findFinancialAccountById(db, userId, destinationAccountId) : undefined;
   const validationAccount = account && existing?.accountId === account.id ? restoreFinancialAccountFromIncome(account, existing) : account;
   const isTradingAccount = input.sourceType === "TOPSTEP" || validationAccount?.accountType === "TRADING";
   const grossAmountCents = isTradingAccount ? getTradingGrossAmount(input, amountPerAccountCents) : amountPerAccountCents;
@@ -703,6 +713,8 @@ export async function upsertIncome(db: Database, userId: string, input: IncomeIn
 
   if (!input.source.trim()) throw new Error("Income source is required.");
   if (accountId && !account) throw new Error("Selected account could not be found.");
+  if (destinationAccountId && !destinationAccount) throw new Error("Destination account could not be found.");
+  if (destinationAccount?.accountType === "TRADING") throw new Error("Choose a bank or cash account as the deposit destination.");
   if (amountPerAccountCents <= 0) throw new Error("Gross income amount must be greater than zero.");
   if (isTradingAccount && topstepDetails.withdrawableCents !== null && grossAmountCents > topstepDetails.withdrawableCents) {
     throw new Error(`Trading payout cannot be more than ${formatCentsForError(topstepDetails.withdrawableCents)} for the selected account scope.`);
@@ -712,13 +724,14 @@ export async function upsertIncome(db: Database, userId: string, input: IncomeIn
   db.run(
     `
       INSERT INTO income (
-        id, user_id, account_id, source, source_type, amount_cents, gross_amount_cents, fees_cents, tax_withholding_cents,
+        id, user_id, account_id, destination_account_id, source, source_type, amount_cents, gross_amount_cents, fees_cents, tax_withholding_cents,
         net_amount_cents, allocated_amount_cents, topstep_account_count, topstep_copied_accounts, topstep_payout_scope,
         topstep_selected_account, topstep_profit_per_account_cents, topstep_total_profit_cents, topstep_withdrawable_cents,
         topstep_fee_cents, received_at, notes, created_at, updated_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       ON CONFLICT(id) DO UPDATE SET
         account_id = excluded.account_id,
+        destination_account_id = excluded.destination_account_id,
         source = excluded.source,
         source_type = excluded.source_type,
         amount_cents = excluded.amount_cents,
@@ -743,6 +756,7 @@ export async function upsertIncome(db: Database, userId: string, input: IncomeIn
       incomeId,
       userId,
       accountId,
+      destinationAccountId,
       input.source.trim(),
       input.sourceType,
       netAmountCents,
@@ -766,7 +780,7 @@ export async function upsertIncome(db: Database, userId: string, input: IncomeIn
     ],
   );
 
-  applyIncomeAccountBalanceChange(db, userId, existing, input, accountId);
+  applyIncomeAccountBalanceChange(db, userId, existing, input, accountId, destinationAccountId, netAmountCents);
 
   await saveDatabase(db);
   return findIncomeById(db, userId, incomeId)!;
@@ -774,9 +788,7 @@ export async function upsertIncome(db: Database, userId: string, input: IncomeIn
 
 export async function deleteIncome(db: Database, userId: string, incomeId: string) {
   const existing = findIncomeById(db, userId, incomeId);
-  if (existing?.accountId) {
-    adjustAccountFromIncome(db, userId, existing, 1);
-  }
+  if (existing) restoreIncomeAccountMovements(db, userId, existing);
   db.run("DELETE FROM income WHERE id = ? AND user_id = ?", [incomeId, userId]);
   await saveDatabase(db);
 }
@@ -785,7 +797,8 @@ export async function upsertPayment(db: Database, userId: string, input: Payment
   const now = new Date().toISOString();
   const paymentId = input.id ?? crypto.randomUUID();
   const existing = input.id ? findPaymentById(db, userId, input.id) : undefined;
-  if (input.id) restoreDebtSnapshotFromPayment(db, userId, input.id);
+  const accountId = input.accountId.trim() || null;
+  const account = accountId ? findFinancialAccountById(db, userId, accountId) : undefined;
   const amountCents = parseMoneyToCents(input.amount);
   const interestAndFeesCents = input.interestAndFees.trim() ? parseMoneyToCents(input.interestAndFees) : null;
   const principalCents = input.principal.trim() ? parseMoneyToCents(input.principal) : Math.max(0, amountCents - (interestAndFeesCents ?? 0));
@@ -796,27 +809,33 @@ export async function upsertPayment(db: Database, userId: string, input: Payment
       : null;
   const paidAt = parseDateToIso(input.paidDate, now);
   const debt = findDebtById(db, userId, input.debtId);
-  const debtStatusBefore = input.updateDebtStatus && (input.paymentType === "SETTLEMENT" || input.paymentType === "PAYOFF") ? debt?.status ?? null : null;
-  const debtStatusAfter = debtStatusBefore ? "SETTLED" : null;
-  const debtBalanceBefore = resultingBalanceCents !== null ? debt?.balanceCents ?? null : null;
-  const debtBalanceAfter = resultingBalanceCents;
 
   if (!input.debtId) throw new Error("Choose a debt for this payment.");
   if (!debt) throw new Error("That debt could not be found.");
+  if (accountId && !account) throw new Error("Selected payment account could not be found.");
   if (amountCents <= 0) throw new Error("Payment amount must be greater than zero.");
   if (principalCents !== null && interestAndFeesCents !== null && principalCents + interestAndFeesCents > amountCents) {
     throw new Error("Principal plus interest and fees cannot exceed the payment amount.");
   }
 
+  if (input.id) restoreDebtSnapshotFromPayment(db, userId, input.id);
+  if (existing) restorePaymentAccountMovement(db, userId, existing);
+  const restoredDebt = findDebtById(db, userId, input.debtId);
+  const debtStatusBefore = input.updateDebtStatus && (input.paymentType === "SETTLEMENT" || input.paymentType === "PAYOFF") ? restoredDebt?.status ?? null : null;
+  const debtStatusAfter = debtStatusBefore ? "SETTLED" : null;
+  const debtBalanceBefore = resultingBalanceCents !== null ? restoredDebt?.balanceCents ?? null : null;
+  const debtBalanceAfter = resultingBalanceCents;
+
   db.run(
     `
       INSERT INTO payments (
-        id, user_id, debt_id, payment_type, amount_cents, principal_cents, interest_and_fees_cents,
+        id, user_id, debt_id, account_id, payment_type, amount_cents, principal_cents, interest_and_fees_cents,
         resulting_balance_cents, confirmation_number, payment_method, debt_status_before, debt_status_after,
         debt_balance_before_cents, debt_balance_after_cents, paid_at, notes, created_at, updated_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       ON CONFLICT(id) DO UPDATE SET
         debt_id = excluded.debt_id,
+        account_id = excluded.account_id,
         payment_type = excluded.payment_type,
         amount_cents = excluded.amount_cents,
         principal_cents = excluded.principal_cents,
@@ -836,6 +855,7 @@ export async function upsertPayment(db: Database, userId: string, input: Payment
       paymentId,
       userId,
       input.debtId,
+      accountId,
       input.paymentType,
       amountCents,
       principalCents,
@@ -854,6 +874,8 @@ export async function upsertPayment(db: Database, userId: string, input: Payment
     ],
   );
 
+  if (accountId) adjustFinancialAccountBalance(db, userId, accountId, -amountCents);
+
   if (input.updateDebtStatus && (input.paymentType === "SETTLEMENT" || input.paymentType === "PAYOFF")) {
     db.run("UPDATE debts SET status = 'SETTLED', updated_at = ? WHERE id = ? AND user_id = ?", [now, input.debtId, userId]);
   }
@@ -866,6 +888,8 @@ export async function upsertPayment(db: Database, userId: string, input: Payment
 }
 
 export async function deletePayment(db: Database, userId: string, paymentId: string) {
+  const existing = findPaymentById(db, userId, paymentId);
+  if (existing) restorePaymentAccountMovement(db, userId, existing);
   restoreDebtSnapshotFromPayment(db, userId, paymentId);
   db.run("DELETE FROM payments WHERE id = ? AND user_id = ?", [paymentId, userId]);
   await saveDatabase(db);
@@ -1006,8 +1030,8 @@ function normalizeBackupPayload(input: unknown): GoXPlanBackup {
 
     let columns = table.columns.map((column) => String(column));
     let rows = table.rows;
-    if (tableName === "payments") {
-      const upgraded = upgradePaymentBackupRows(columns, rows, expectedColumns);
+    if (tableName === "income" || tableName === "payments") {
+      const upgraded = upgradeBackupRowsWithOptionalColumns(tableName, columns, rows, expectedColumns);
       columns = upgraded.columns;
       rows = upgraded.rows;
     }
@@ -1034,11 +1058,16 @@ function normalizeBackupPayload(input: unknown): GoXPlanBackup {
   };
 }
 
-function upgradePaymentBackupRows(columns: string[], rows: unknown[], expectedColumns: string[]) {
+function upgradeBackupRowsWithOptionalColumns(tableName: BackupTableName, columns: string[], rows: unknown[], expectedColumns: string[]) {
   let nextColumns = columns;
   let nextRows = rows;
 
-  for (const missingColumn of ["debt_status_before", "debt_status_after", "debt_balance_before_cents", "debt_balance_after_cents"]) {
+  const optionalColumns =
+    tableName === "income"
+      ? ["destination_account_id"]
+      : ["account_id", "debt_status_before", "debt_status_after", "debt_balance_before_cents", "debt_balance_after_cents"];
+
+  for (const missingColumn of optionalColumns) {
     if (nextColumns.includes(missingColumn)) continue;
     const insertAt = expectedColumns.indexOf(missingColumn);
     nextColumns = [...nextColumns.slice(0, insertAt), missingColumn, ...nextColumns.slice(insertAt)];
@@ -1120,6 +1149,11 @@ function sanitizeBackupRow(db: Database, userId: string, tableName: BackupTableN
     if (accountId && !findFinancialAccountById(db, userId, String(accountId))) {
       values[accountIdIndex] = null;
     }
+    const destinationAccountIdIndex = columns.indexOf("destination_account_id");
+    const destinationAccountId = destinationAccountIdIndex >= 0 ? values[destinationAccountIdIndex] : null;
+    if (destinationAccountId && !findFinancialAccountById(db, userId, String(destinationAccountId))) {
+      values[destinationAccountIdIndex] = null;
+    }
   }
 
   if (tableName === "negotiations") {
@@ -1139,6 +1173,11 @@ function sanitizeBackupRow(db: Database, userId: string, tableName: BackupTableN
     sanitizeStringEnumValue(values, columns, "payment_type", normalizePaymentType, "REGULAR");
     sanitizeDebtStatusValue(values, columns, "debt_status_before", null);
     sanitizeDebtStatusValue(values, columns, "debt_status_after", null);
+    const accountIdIndex = columns.indexOf("account_id");
+    const accountId = accountIdIndex >= 0 ? values[accountIdIndex] : null;
+    if (accountId && !findFinancialAccountById(db, userId, String(accountId))) {
+      values[accountIdIndex] = null;
+    }
   }
 
   if (tableName === "payoff_settings") {
@@ -1247,9 +1286,11 @@ function findIncomeById(db: Database, userId: string, incomeId: string) {
         , income.source_type, income.gross_amount_cents, income.fees_cents, income.tax_withholding_cents, income.net_amount_cents, income.allocated_amount_cents,
         income.topstep_account_count, income.topstep_copied_accounts, income.topstep_payout_scope, income.topstep_selected_account,
         income.topstep_profit_per_account_cents, income.topstep_total_profit_cents, income.topstep_withdrawable_cents, income.topstep_fee_cents,
-        income.account_id, financial_accounts.name, financial_accounts.account_type
+        income.account_id, source_account.name, source_account.account_type,
+        income.destination_account_id, destination_account.name, destination_account.account_type
       FROM income
-      LEFT JOIN financial_accounts ON financial_accounts.id = income.account_id AND financial_accounts.user_id = income.user_id
+      LEFT JOIN financial_accounts AS source_account ON source_account.id = income.account_id AND source_account.user_id = income.user_id
+      LEFT JOIN financial_accounts AS destination_account ON destination_account.id = income.destination_account_id AND destination_account.user_id = income.user_id
       WHERE income.id = ? AND income.user_id = ?
     `,
     [incomeId, userId],
@@ -1279,9 +1320,11 @@ function findPaymentById(db: Database, userId: string, paymentId: string) {
         payments.id, payments.user_id, payments.debt_id, debts.creditor_name, payments.amount_cents,
         payments.paid_at, payments.notes, payments.created_at, payments.updated_at,
         payments.payment_type, payments.principal_cents, payments.interest_and_fees_cents,
-        payments.resulting_balance_cents, payments.confirmation_number, payments.payment_method
+        payments.resulting_balance_cents, payments.confirmation_number, payments.payment_method,
+        payments.account_id, financial_accounts.name, financial_accounts.account_type
       FROM payments
       LEFT JOIN debts ON debts.id = payments.debt_id AND debts.user_id = payments.user_id
+      LEFT JOIN financial_accounts ON financial_accounts.id = payments.account_id AND financial_accounts.user_id = payments.user_id
       WHERE payments.id = ? AND payments.user_id = ?
     `,
     [paymentId, userId],
@@ -1417,6 +1460,9 @@ function toIncome(row: unknown[]): Income {
     accountId: row[22] === null || row[22] === undefined ? null : String(row[22]),
     accountName: row[23] === null || row[23] === undefined ? null : String(row[23]),
     accountType: row[24] === null || row[24] === undefined ? null : normalizeFinancialAccountType(String(row[24])),
+    destinationAccountId: row[25] === null || row[25] === undefined ? null : String(row[25]),
+    destinationAccountName: row[26] === null || row[26] === undefined ? null : String(row[26]),
+    destinationAccountType: row[27] === null || row[27] === undefined ? null : normalizeFinancialAccountType(String(row[27])),
     source: String(row[2]),
     sourceType: normalizeIncomeSourceType(String(row[8] ?? "OTHER")),
     amountCents: netAmountCents,
@@ -1494,6 +1540,9 @@ function toPayment(row: unknown[]): Payment {
     userId: String(row[1]),
     debtId: row[2] === null || row[2] === undefined ? null : String(row[2]),
     debtName: row[3] === null || row[3] === undefined ? null : String(row[3]),
+    accountId: row[15] === null || row[15] === undefined ? null : String(row[15]),
+    accountName: row[16] === null || row[16] === undefined ? null : String(row[16]),
+    accountType: row[17] === null || row[17] === undefined ? null : normalizeFinancialAccountType(String(row[17])),
     amountCents: Number(row[4]),
     paymentType: normalizePaymentType(String(row[9] ?? "REGULAR")),
     principalCents: row[10] === null || row[10] === undefined ? null : Number(row[10]),
@@ -1651,14 +1700,39 @@ function normalizeNegotiationStatus(value: string): NegotiationStatus {
   return "CONTACTED";
 }
 
-function applyIncomeAccountBalanceChange(db: Database, userId: string, existingIncome: Income | undefined, input: IncomeInput, nextAccountId: string | null) {
-  if (existingIncome?.accountId) {
-    adjustAccountFromIncome(db, userId, existingIncome, 1);
-  }
+function applyIncomeAccountBalanceChange(
+  db: Database,
+  userId: string,
+  existingIncome: Income | undefined,
+  input: IncomeInput,
+  nextAccountId: string | null,
+  nextDestinationAccountId: string | null,
+  netAmountCents: number,
+) {
+  if (existingIncome) restoreIncomeAccountMovements(db, userId, existingIncome);
 
   if (nextAccountId) {
     adjustAccountFromInput(db, userId, nextAccountId, input, -1);
   }
+
+  if (nextDestinationAccountId) {
+    adjustFinancialAccountBalance(db, userId, nextDestinationAccountId, netAmountCents);
+  }
+}
+
+function restoreIncomeAccountMovements(db: Database, userId: string, income: Income) {
+  if (income.accountId) {
+    adjustAccountFromIncome(db, userId, income, 1);
+  }
+
+  if (income.destinationAccountId) {
+    adjustFinancialAccountBalance(db, userId, income.destinationAccountId, -income.netAmountCents);
+  }
+}
+
+function restorePaymentAccountMovement(db: Database, userId: string, payment: Payment) {
+  if (!payment.accountId) return;
+  adjustFinancialAccountBalance(db, userId, payment.accountId, payment.amountCents);
 }
 
 function restoreFinancialAccountFromIncome(account: FinancialAccount, income: Income) {
@@ -1946,6 +2020,7 @@ function ensureIncomeColumns(db: Database) {
   const columns = new Set((db.exec("PRAGMA table_info(income)")[0]?.values ?? []).map((row) => String(row[1])));
   const additions: Array<[string, string]> = [
     ["account_id", "ALTER TABLE income ADD COLUMN account_id TEXT"],
+    ["destination_account_id", "ALTER TABLE income ADD COLUMN destination_account_id TEXT"],
     ["source_type", "ALTER TABLE income ADD COLUMN source_type TEXT NOT NULL DEFAULT 'OTHER'"],
     ["gross_amount_cents", "ALTER TABLE income ADD COLUMN gross_amount_cents INTEGER NOT NULL DEFAULT 0"],
     ["fees_cents", "ALTER TABLE income ADD COLUMN fees_cents INTEGER NOT NULL DEFAULT 0"],
@@ -1995,6 +2070,7 @@ function ensureFinancialAccountColumns(db: Database) {
 function ensurePaymentColumns(db: Database) {
   const columns = new Set((db.exec("PRAGMA table_info(payments)")[0]?.values ?? []).map((row) => String(row[1])));
   const additions: Array<[string, string]> = [
+    ["account_id", "ALTER TABLE payments ADD COLUMN account_id TEXT"],
     ["payment_type", "ALTER TABLE payments ADD COLUMN payment_type TEXT NOT NULL DEFAULT 'REGULAR'"],
     ["principal_cents", "ALTER TABLE payments ADD COLUMN principal_cents INTEGER"],
     ["interest_and_fees_cents", "ALTER TABLE payments ADD COLUMN interest_and_fees_cents INTEGER"],
@@ -2155,6 +2231,7 @@ const schema = `
     id TEXT PRIMARY KEY,
     user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     account_id TEXT REFERENCES financial_accounts(id) ON DELETE SET NULL,
+    destination_account_id TEXT REFERENCES financial_accounts(id) ON DELETE SET NULL,
     source TEXT NOT NULL,
     source_type TEXT NOT NULL DEFAULT 'OTHER',
     amount_cents INTEGER NOT NULL DEFAULT 0,
@@ -2181,6 +2258,7 @@ const schema = `
     id TEXT PRIMARY KEY,
     user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     debt_id TEXT REFERENCES debts(id) ON DELETE SET NULL,
+    account_id TEXT REFERENCES financial_accounts(id) ON DELETE SET NULL,
     payment_type TEXT NOT NULL DEFAULT 'REGULAR',
     amount_cents INTEGER NOT NULL DEFAULT 0,
     principal_cents INTEGER,

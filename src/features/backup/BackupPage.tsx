@@ -407,7 +407,8 @@ function incomeToCsv(income: Income[]) {
     "Date",
     "Source",
     "Type",
-    "Account",
+    "From account",
+    "Deposit to",
     "Gross",
     "Fees",
     "Tax withholding",
@@ -427,6 +428,7 @@ function incomeToCsv(income: Income[]) {
     item.source,
     item.sourceType,
     item.accountName ?? "",
+    item.destinationAccountName ?? "",
     centsToDecimal(item.grossAmountCents),
     centsToDecimal(item.feesCents),
     centsToDecimal(item.taxWithholdingCents),
@@ -449,6 +451,7 @@ function paymentsToCsv(payments: Payment[]) {
   const headers = [
     "Date",
     "Debt",
+    "Paid from",
     "Type",
     "Amount",
     "Principal",
@@ -461,6 +464,7 @@ function paymentsToCsv(payments: Payment[]) {
   const rows = payments.map((payment) => [
     payment.paidAt,
     payment.debtName ?? "Removed debt",
+    payment.accountName ?? "",
     payment.paymentType,
     centsToDecimal(payment.amountCents),
     payment.principalCents === null ? "" : centsToDecimal(payment.principalCents),
@@ -523,7 +527,9 @@ function financialReportToCsv(records: Pick<BackupPageProps, "accounts" | "debts
   const totalDebt = records.debts.reduce((sum, debt) => sum + debt.balanceCents, 0);
   const currentObligations = records.debts.reduce((sum, debt) => sum + getDebtActionAmountCents(debt), 0);
   const totalIncome = records.income.reduce((sum, item) => sum + item.netAmountCents, 0);
-  const availableCash = records.income.reduce((sum, item) => sum + item.remainingAmountCents, 0);
+  const availableCash = records.accounts
+    .filter((account) => account.accountType !== "TRADING")
+    .reduce((sum, account) => sum + account.availableBalanceCents, 0);
   const totalPayments = records.payments.reduce((sum, payment) => sum + payment.amountCents, 0);
   const acceptedAgreements = records.negotiations.filter((negotiation) => negotiation.status === "ACCEPTED" && negotiation.finalAgreementCents !== null);
   const rows: CsvRow[] = [

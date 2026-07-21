@@ -1,9 +1,10 @@
 import { ArrowRight, Banknote, CalendarDays, CircleDollarSign, Handshake, ReceiptText, TrendingDown, WalletCards } from "lucide-react";
 import { getDebtPriorityLevel } from "../../lib/debtPriority";
 import { buildNegotiationInsights, getPlanningTarget, type DebtNegotiationInsight } from "../../lib/negotiationTargets";
-import type { Debt, Income, Negotiation, Payment } from "../../types";
+import type { Debt, FinancialAccount, Income, Negotiation, Payment } from "../../types";
 
 type ReportsPageProps = {
+  accounts: FinancialAccount[];
   debts: Debt[];
   income: Income[];
   negotiations: Negotiation[];
@@ -21,7 +22,7 @@ type ActivityItem = {
   tone: "income" | "negotiation" | "payment";
 };
 
-export function ReportsPage({ debts, income, negotiations, payments, onOpenIncome, onOpenPayments }: ReportsPageProps) {
+export function ReportsPage({ accounts, debts, income, negotiations, payments, onOpenIncome, onOpenPayments }: ReportsPageProps) {
   const paymentSummary = summarizePayments(payments);
   const negotiationInsights = buildNegotiationInsights(negotiations);
   const totalPaid = [...paymentSummary.paidByDebt.values()].reduce((sum, amount) => sum + amount, 0);
@@ -30,7 +31,7 @@ export function ReportsPage({ debts, income, negotiations, payments, onOpenIncom
   const startingBalance = fullRemainingBalance + totalPaid;
   const paidPercent = startingBalance ? Math.round((totalPaid / startingBalance) * 100) : 0;
   const totalIncome = income.reduce((sum, item) => sum + item.netAmountCents, 0);
-  const availableIncome = income.reduce((sum, item) => sum + item.remainingAmountCents, 0);
+  const availableCash = accounts.filter((account) => account.accountType !== "TRADING").reduce((sum, account) => sum + account.availableBalanceCents, 0);
   const acceptedAgreements = buildAcceptedAgreements(negotiations, debts);
   const acceptedSavings = acceptedAgreements.reduce((sum, item) => sum + item.savingsCents, 0);
   const monthlyRows = buildMonthlyRows(income, payments);
@@ -75,7 +76,7 @@ export function ReportsPage({ debts, income, negotiations, payments, onOpenIncom
         <article>
           <Banknote size={17} />
           <span>Available cash</span>
-          <strong className={availableIncome < 0 ? "warning-text" : ""}>{formatCurrency(availableIncome)}</strong>
+          <strong className={availableCash < 0 ? "warning-text" : ""}>{formatCurrency(availableCash)}</strong>
           <em>{formatCurrency(totalIncome)} income recorded</em>
         </article>
         <article>

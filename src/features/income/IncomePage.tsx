@@ -11,6 +11,7 @@ type IncomePageProps = {
 
 const emptyForm: IncomeInput = {
   accountId: "",
+  destinationAccountId: "",
   source: "",
   sourceType: "EMPLOYMENT",
   grossAmount: "",
@@ -60,6 +61,8 @@ export function IncomePage({ financialAccounts, income, onSave, onDelete }: Inco
     };
   }, [income]);
   const selectedAccount = financialAccounts.find((account) => account.id === form.accountId);
+  const cashAccounts = financialAccounts.filter((account) => account.accountType !== "TRADING");
+  const accountCashCents = cashAccounts.reduce((sum, account) => sum + account.availableBalanceCents, 0);
   const editedIncome = form.id ? income.find((item) => item.id === form.id) : undefined;
   const previewAccount = selectedAccount ? restoreAccountForEditedIncome(selectedAccount, editedIncome) : undefined;
   const usesTradingRules = form.sourceType === "TOPSTEP" || selectedAccount?.accountType === "TRADING";
@@ -92,6 +95,7 @@ export function IncomePage({ financialAccounts, income, onSave, onDelete }: Inco
     setForm({
       id: item.id,
       accountId: item.accountId ?? "",
+      destinationAccountId: item.destinationAccountId ?? "",
       source: item.source,
       sourceType: item.sourceType,
       grossAmount: centsToInput(getEditableGrossAmountCents(item)),
@@ -162,7 +166,7 @@ export function IncomePage({ financialAccounts, income, onSave, onDelete }: Inco
         </article>
         <article>
           <span>Available cash</span>
-          <strong className={totals.remaining < 0 ? "warning-text" : ""}>{formatCurrency(totals.remaining)}</strong>
+          <strong className={accountCashCents < 0 ? "warning-text" : ""}>{formatCurrency(accountCashCents)}</strong>
         </article>
       </section>
 
@@ -279,12 +283,12 @@ export function IncomePage({ financialAccounts, income, onSave, onDelete }: Inco
             <form className="debt-form" onSubmit={submit}>
               <div className="form-grid two">
                 <label className="field-block">
-                  Account
+                  From account
                   <select value={form.accountId} onChange={(event) => setAccount(event.target.value)}>
-                    <option value="">No account selected</option>
+                    <option value="">No source account</option>
                     {financialAccounts.map((account) => (
                       <option key={account.id} value={account.id}>
-                        {account.name}
+                        {getAccountOptionLabel(account)}
                       </option>
                     ))}
                   </select>
@@ -296,6 +300,17 @@ export function IncomePage({ financialAccounts, income, onSave, onDelete }: Inco
               </div>
 
               <div className="form-grid two">
+                <label className="field-block">
+                  Deposit to
+                  <select value={form.destinationAccountId} onChange={(event) => setForm({ ...form, destinationAccountId: event.target.value })}>
+                    <option value="">No destination account</option>
+                    {cashAccounts.map((account) => (
+                      <option key={account.id} value={account.id}>
+                        {getAccountOptionLabel(account)}
+                      </option>
+                    ))}
+                  </select>
+                </label>
                 <label className="field-block">
                   Income type
                   <select
@@ -443,11 +458,11 @@ export function IncomePage({ financialAccounts, income, onSave, onDelete }: Inco
 
               <div className="income-form-preview">
                 <div>
-                  <span>Net</span>
+                  <span>Deposit amount</span>
                   <strong>{formatCurrency(formPreview.net)}</strong>
                 </div>
                 <div>
-                  <span>Available cash</span>
+                  <span>Unassigned</span>
                   <strong className={formPreview.remaining < 0 ? "warning-text" : ""}>{formatCurrency(formPreview.remaining)}</strong>
                 </div>
               </div>
@@ -631,7 +646,11 @@ function getIncomeMetaChips(item: Income) {
   const chips: Array<{ label: string; tone?: "danger" }> = [];
 
   if (item.accountName) {
-    chips.push({ label: item.accountName });
+    chips.push({ label: `From ${item.accountName}` });
+  }
+
+  if (item.destinationAccountName) {
+    chips.push({ label: `To ${item.destinationAccountName}` });
   }
 
   if (item.sourceType === "TOPSTEP") {
@@ -653,7 +672,12 @@ function getIncomeMetaChips(item: Income) {
     chips.push({ label: "Overassigned", tone: "danger" });
   }
 
-  return chips.length ? chips : [{ label: "No account linked" }];
+  return chips.length ? chips : [{ label: "No accounts linked" }];
+}
+
+function getAccountOptionLabel(account: FinancialAccount) {
+  const type = account.accountType === "BANK" ? "Bank" : account.accountType === "TRADING" ? "Trading" : "Cash";
+  return `${account.name} - ${type} - ${formatCurrency(account.availableBalanceCents)}`;
 }
 
 function formatPercent(basisPoints: number) {

@@ -78,6 +78,45 @@ describe("local database stability", () => {
     expect(getOnlyAccount().tradingAccountProfitsCents).toEqual([200000, 200000, 200000, 200000]);
   });
 
+  test("moves trading payout cash into a destination account and restores it on edit and delete", async () => {
+    const trading = await upsertFinancialAccount(db, userId, tradingAccountInput({ availableBalance: "2000", copiedAccounts: true }));
+    const bank = await upsertFinancialAccount(db, userId, bankAccountInput({ availableBalance: "100" }));
+
+    const income = await upsertIncome(
+      db,
+      userId,
+      tradingIncomeInput({
+        accountId: trading.id,
+        destinationAccountId: bank.id,
+        grossAmount: "500",
+        topstepAccountCount: "4",
+      }),
+    );
+
+    expect(getAccount(trading.id).tradingAccountProfitsCents).toEqual([150000, 150000, 150000, 150000]);
+    expect(getAccount(bank.id).availableBalanceCents).toBe(190000);
+
+    await upsertIncome(
+      db,
+      userId,
+      tradingIncomeInput({
+        id: income.id,
+        accountId: trading.id,
+        destinationAccountId: bank.id,
+        grossAmount: "300",
+        topstepAccountCount: "4",
+      }),
+    );
+
+    expect(getAccount(trading.id).tradingAccountProfitsCents).toEqual([170000, 170000, 170000, 170000]);
+    expect(getAccount(bank.id).availableBalanceCents).toBe(118000);
+
+    await deleteIncome(db, userId, income.id);
+
+    expect(getAccount(trading.id).tradingAccountProfitsCents).toEqual([200000, 200000, 200000, 200000]);
+    expect(getAccount(bank.id).availableBalanceCents).toBe(10000);
+  });
+
   test("restores debt balance and status when a payment is edited and deleted", async () => {
     const debt = await upsertDebt(db, userId, debtInput({ balance: "1000", status: "COLLECTION" }));
 
@@ -112,6 +151,20 @@ describe("local database stability", () => {
     await deletePayment(db, userId, settlement.id);
 
     expect(getOnlyDebt()).toMatchObject({ balanceCents: 100000, status: "COLLECTION" });
+  });
+
+  test("deducts payment cash from the selected account and restores it on edit and delete", async () => {
+    const bank = await upsertFinancialAccount(db, userId, bankAccountInput({ availableBalance: "1000" }));
+    const debt = await upsertDebt(db, userId, debtInput({ balance: "1000", status: "COLLECTION" }));
+
+    const payment = await upsertPayment(db, userId, paymentInput({ accountId: bank.id, amount: "200", debtId: debt.id }));
+    expect(getAccount(bank.id).availableBalanceCents).toBe(80000);
+
+    await upsertPayment(db, userId, paymentInput({ id: payment.id, accountId: bank.id, amount: "150", debtId: debt.id }));
+    expect(getAccount(bank.id).availableBalanceCents).toBe(85000);
+
+    await deletePayment(db, userId, payment.id);
+    expect(getAccount(bank.id).availableBalanceCents).toBe(100000);
   });
 
   test("previews backup counts and rejects invalid backup shapes", async () => {
@@ -324,6 +377,12 @@ function getOnlyAccount() {
   return accounts[0];
 }
 
+function getAccount(accountId: string) {
+  const account = listFinancialAccounts(db, userId).find((item) => item.id === accountId);
+  expect(account).toBeDefined();
+  return account!;
+}
+
 function getOnlyDebt() {
   const debts = listDebts(db, userId);
   expect(debts).toHaveLength(1);
@@ -346,9 +405,26 @@ function tradingAccountInput(patch: Partial<FinancialAccountInput> = {}): Financ
   };
 }
 
+function bankAccountInput(patch: Partial<FinancialAccountInput> = {}): FinancialAccountInput {
+  return {
+    accountType: "BANK",
+    availableBalance: "0",
+    copiedAccounts: false,
+    feePercent: "",
+    institution: "Test Bank",
+    maxSubAccounts: "",
+    name: "Checking",
+    notes: "",
+    payoutLimitPercent: "",
+    tradingAccountProfits: ["", "", "", "", ""],
+    ...patch,
+  };
+}
+
 function tradingIncomeInput(patch: Partial<IncomeInput> = {}): IncomeInput {
   return {
     accountId: "",
+    destinationAccountId: "",
     allocatedAmount: "",
     fees: "",
     grossAmount: "500",
@@ -393,6 +469,7 @@ function debtInput(patch: Partial<DebtInput> = {}): DebtInput {
 
 function paymentInput(patch: Partial<PaymentInput> = {}): PaymentInput {
   return {
+    accountId: "",
     amount: "100",
     confirmationNumber: "",
     debtId: "",

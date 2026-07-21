@@ -2,10 +2,11 @@ import { AlertTriangle, ArrowRight, CalendarDays, CheckCircle2, CreditCard, Edit
 import { type FormEvent, useEffect, useMemo, useState } from "react";
 import { ConfirmDialog } from "../../components/ConfirmDialog";
 import { buildNegotiationInsights, getPlanningTarget, type DebtNegotiationInsight } from "../../lib/negotiationTargets";
-import type { Debt, Negotiation, Payment, PaymentInput, PaymentType } from "../../types";
+import type { Debt, FinancialAccount, Negotiation, Payment, PaymentInput, PaymentType } from "../../types";
 
 type PaymentsPageProps = {
   debts: Debt[];
+  financialAccounts: FinancialAccount[];
   initialPayment?: PaymentInput;
   negotiations: Negotiation[];
   payments: Payment[];
@@ -17,6 +18,7 @@ type PaymentsPageProps = {
 type PaymentSummary = ReturnType<typeof summarizePayments>;
 
 const emptyForm: PaymentInput = {
+  accountId: "",
   debtId: "",
   paymentType: "REGULAR",
   amount: "",
@@ -39,8 +41,9 @@ const paymentTypeLabels: Record<PaymentType, string> = {
   PAYOFF: "Payoff",
 };
 
-export function PaymentsPage({ debts, initialPayment, negotiations, payments, onSave, onDelete, onInitialPaymentUsed }: PaymentsPageProps) {
-  const [form, setForm] = useState<PaymentInput>(() => ({ ...emptyForm, debtId: debts[0]?.id ?? "" }));
+export function PaymentsPage({ debts, financialAccounts, initialPayment, negotiations, payments, onSave, onDelete, onInitialPaymentUsed }: PaymentsPageProps) {
+  const paymentAccounts = useMemo(() => financialAccounts.filter((account) => account.accountType !== "TRADING"), [financialAccounts]);
+  const [form, setForm] = useState<PaymentInput>(() => ({ ...emptyForm, accountId: paymentAccounts[0]?.id ?? "", debtId: debts[0]?.id ?? "" }));
   const [error, setError] = useState("");
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
@@ -51,10 +54,10 @@ export function PaymentsPage({ debts, initialPayment, negotiations, payments, on
   useEffect(() => {
     if (!initialPayment) return;
     setError("");
-    setForm(initialPayment);
+    setForm({ ...initialPayment, accountId: initialPayment.accountId || paymentAccounts[0]?.id || "" });
     setIsFormOpen(true);
     onInitialPaymentUsed?.();
-  }, [initialPayment, onInitialPaymentUsed]);
+  }, [initialPayment, onInitialPaymentUsed, paymentAccounts]);
 
   const totals = useMemo(() => {
     const total = payments.reduce((sum, payment) => sum + payment.amountCents, 0);
@@ -74,6 +77,7 @@ export function PaymentsPage({ debts, initialPayment, negotiations, payments, on
   }, [payments]);
 
   const selectedDebt = debts.find((debt) => debt.id === form.debtId);
+  const selectedAccount = paymentAccounts.find((account) => account.id === form.accountId);
   const negotiationInsights = useMemo(() => buildNegotiationInsights(negotiations), [negotiations]);
   const previewSummary = useMemo(() => summarizePayments(payments, form.id), [form.id, payments]);
   const selectedInsight = selectedDebt ? negotiationInsights.get(selectedDebt.id) : undefined;
@@ -110,7 +114,7 @@ export function PaymentsPage({ debts, initialPayment, negotiations, payments, on
 
   function openAddForm() {
     setError("");
-    setForm({ ...emptyForm, debtId: debts[0]?.id ?? "" });
+    setForm({ ...emptyForm, accountId: paymentAccounts[0]?.id ?? "", debtId: debts[0]?.id ?? "" });
     setIsFormOpen(true);
   }
 
@@ -118,6 +122,7 @@ export function PaymentsPage({ debts, initialPayment, negotiations, payments, on
     setError("");
     setForm({
       id: payment.id,
+      accountId: payment.accountId ?? "",
       debtId: payment.debtId ?? "",
       paymentType: payment.paymentType,
       amount: centsToInput(payment.amountCents),
@@ -136,7 +141,7 @@ export function PaymentsPage({ debts, initialPayment, negotiations, payments, on
   function closeForm() {
     setError("");
     setIsEditConfirmOpen(false);
-    setForm({ ...emptyForm, debtId: debts[0]?.id ?? "" });
+    setForm({ ...emptyForm, accountId: paymentAccounts[0]?.id ?? "", debtId: debts[0]?.id ?? "" });
     setIsFormOpen(false);
   }
 
@@ -335,6 +340,17 @@ export function PaymentsPage({ debts, initialPayment, negotiations, payments, on
 
                   <div className="form-grid two">
                     <label className="field-block">
+                      Paid from
+                      <select value={form.accountId} onChange={(event) => setForm({ ...form, accountId: event.target.value })}>
+                        <option value="">No account selected</option>
+                        {paymentAccounts.map((account) => (
+                          <option key={account.id} value={account.id}>
+                            {getAccountOptionLabel(account)}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                    <label className="field-block">
                       Payment type
                       <select value={form.paymentType} onChange={(event) => setPaymentType(event.target.value as PaymentType)}>
                         {Object.entries(paymentTypeLabels).map(([value, label]) => (
@@ -437,6 +453,16 @@ export function PaymentsPage({ debts, initialPayment, negotiations, payments, on
                       </div>
 
                       <div className="payment-preview-list">
+                        <div>
+                          <span>Cash before</span>
+                          <strong>{selectedAccount ? formatCurrency(selectedAccount.availableBalanceCents) : "No account"}</strong>
+                        </div>
+                        <div>
+                          <span>Cash after</span>
+                          <strong>
+                            {selectedAccount ? formatCurrency(selectedAccount.availableBalanceCents - preview.paymentAmountCents) : "No account"}
+                          </strong>
+                        </div>
                         <div>
                           <span>Full balance now</span>
                           <strong>{formatCurrency(preview.beforeRemainingCents)}</strong>
@@ -593,10 +619,16 @@ function getSuggestedPaymentAmount(debt: Debt, paymentType: PaymentType, summary
 
 function getPaymentMetaChips(payment: Payment) {
   const chips: string[] = [];
+  if (payment.accountName) chips.push(`Paid from ${payment.accountName}`);
   if (payment.paymentMethod) chips.push(payment.paymentMethod);
   if (payment.confirmationNumber) chips.push(`Confirmation ${payment.confirmationNumber}`);
   if (payment.principalCents !== null) chips.push(`${formatCurrency(payment.principalCents)} principal`);
   return chips.length ? chips : ["No method saved"];
+}
+
+function getAccountOptionLabel(account: FinancialAccount) {
+  const type = account.accountType === "BANK" ? "Bank" : "Cash";
+  return `${account.name} - ${type} - ${formatCurrency(account.availableBalanceCents)}`;
 }
 
 function getRemainingCents(debt: Debt, summary: PaymentSummary) {
