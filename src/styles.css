@@ -3680,21 +3680,29 @@ button:focus-visible {
   max-width: none;
 }
 
-.reports-hero {
+.reports-header-panel {
   align-items: center;
   box-shadow: none;
   display: flex;
   gap: 18px;
   justify-content: space-between;
-  padding: 24px;
+  min-height: 142px;
+  padding: 22px;
 }
 
-.reports-hero h2,
+.reports-header-panel h2,
 .report-panel-heading h2 {
   margin: 0;
 }
 
-.reports-hero p,
+.reports-header-panel h2 {
+  font-size: clamp(38px, 4.5vw, 68px);
+  font-weight: 620;
+  letter-spacing: 0;
+  line-height: 0.95;
+}
+
+.reports-header-panel p,
 .report-panel-heading p {
   color: var(--muted);
   margin: 4px 0 0;
@@ -3718,8 +3726,8 @@ button:focus-visible {
   border-radius: 8px;
   display: grid;
   gap: 6px;
-  min-height: 120px;
-  padding: 18px;
+  min-height: 104px;
+  padding: 16px;
 }
 
 .reports-summary-grid svg,
@@ -3740,23 +3748,23 @@ button:focus-visible {
 
 .reports-summary-grid strong {
   color: var(--text);
-  font-size: clamp(24px, 2.3vw, 32px);
-  font-weight: 650;
+  font-size: clamp(22px, 2vw, 30px);
+  font-weight: 620;
   line-height: 1;
 }
 
-.reports-grid {
+.reports-main-grid {
   align-items: stretch;
   display: grid;
   gap: 12px;
-  grid-template-columns: minmax(0, 1.45fr) minmax(360px, 0.9fr);
+  grid-template-columns: minmax(0, 1.45fr) minmax(340px, 0.85fr);
 }
 
 .report-panel {
   box-shadow: none;
   display: grid;
-  gap: 18px;
-  padding: 20px;
+  gap: 16px;
+  padding: 18px;
 }
 
 .report-panel-heading {
@@ -3783,8 +3791,8 @@ button:focus-visible {
   display: grid;
   gap: 12px;
   grid-template-columns: repeat(6, minmax(0, 1fr));
-  min-height: 260px;
-  padding: 20px 18px 14px;
+  min-height: 210px;
+  padding: 16px 14px 12px;
 }
 
 .cashflow-month {
@@ -3798,7 +3806,7 @@ button:focus-visible {
   display: grid;
   gap: 5px;
   grid-template-columns: repeat(2, minmax(8px, 1fr));
-  height: 200px;
+  height: 154px;
 }
 
 .cashflow-bar {
@@ -3851,25 +3859,37 @@ button:focus-visible {
   background: color-mix(in srgb, var(--surface-strong) 72%, var(--surface));
 }
 
-.report-progress-row {
-  align-items: center;
+.report-progress-card {
   background: var(--surface-soft);
   border: 1px solid var(--border);
   border-radius: 8px;
-  display: flex;
-  justify-content: space-between;
   padding: 14px;
 }
 
-.report-progress-row span {
-  color: var(--muted);
-  font-size: 12px;
-  font-weight: 650;
+.report-progress-values {
+  align-items: center;
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  margin-top: 12px;
 }
 
-.report-progress-row strong {
-  font-size: 22px;
+.report-progress-values span {
+  color: var(--muted);
+  display: grid;
+  font-size: 12px;
   font-weight: 650;
+  gap: 2px;
+}
+
+.report-progress-values span:last-child {
+  text-align: right;
+}
+
+.report-progress-values strong {
+  color: var(--text);
+  font-size: 20px;
+  font-weight: 620;
 }
 
 .report-progress-track {
@@ -3893,11 +3913,12 @@ button:focus-visible {
 
 .priority-mini-row {
   align-items: center;
+  background: var(--surface-soft);
   border-left: 3px solid var(--border);
   border-radius: 8px;
   display: flex;
   justify-content: space-between;
-  padding: 10px 12px;
+  padding: 9px 11px;
 }
 
 .priority-mini-row span {
@@ -3906,8 +3927,16 @@ button:focus-visible {
   font-weight: 720;
 }
 
+.priority-mini-row em {
+  color: var(--muted);
+  display: block;
+  font-size: 11px;
+  font-style: normal;
+  font-weight: 560;
+}
+
 .priority-mini-row strong {
-  font-weight: 680;
+  font-weight: 620;
 }
 
 .priority-mini-row.priority-emergency {
@@ -5447,7 +5476,7 @@ button:focus-visible {
   .finance-main-grid,
   .finance-overview-grid,
   .finance-chart-grid,
-  .reports-grid {
+  .reports-main-grid {
     grid-template-columns: 1fr;
   }
 
@@ -5538,7 +5567,7 @@ button:focus-visible {
   .app-topbar,
   .topbar-actions,
   .dashboard-hero,
-  .reports-hero,
+  .reports-header-panel,
   .reports-hero-actions,
   .report-panel-heading {
     align-items: stretch;

@@ -25,8 +25,9 @@ export function ReportsPage({ debts, income, negotiations, payments, onOpenIncom
   const paymentSummary = summarizePayments(payments);
   const negotiationInsights = buildNegotiationInsights(negotiations);
   const totalPaid = [...paymentSummary.paidByDebt.values()].reduce((sum, amount) => sum + amount, 0);
-  const currentBalance = debts.reduce((sum, debt) => sum + getRemainingCents(debt, paymentSummary), 0);
-  const startingBalance = currentBalance + totalPaid;
+  const fullRemainingBalance = debts.reduce((sum, debt) => sum + getRemainingCents(debt, paymentSummary), 0);
+  const currentObligations = debts.reduce((sum, debt) => sum + getObligationCents(debt, paymentSummary, negotiationInsights.get(debt.id)), 0);
+  const startingBalance = fullRemainingBalance + totalPaid;
   const paidPercent = startingBalance ? Math.round((totalPaid / startingBalance) * 100) : 0;
   const totalIncome = income.reduce((sum, item) => sum + item.netAmountCents, 0);
   const availableIncome = income.reduce((sum, item) => sum + item.remainingAmountCents, 0);
@@ -40,11 +41,11 @@ export function ReportsPage({ debts, income, negotiations, payments, onOpenIncom
 
   return (
     <div className="page-stack reports-page">
-      <section className="reports-hero panel">
+      <section className="reports-header-panel panel">
         <div>
-          <span className="section-kicker">Money movement</span>
-          <h2>Reports</h2>
-          <p>Track what came in, what went out, and how the debt plan is moving over time.</p>
+          <span className="section-kicker">Financial snapshot</span>
+          <h2>{formatCurrency(currentObligations)}</h2>
+          <p>Current obligations that need action now.</p>
         </div>
         <div className="reports-hero-actions">
           <button className="icon-text-button" type="button" onClick={onOpenIncome}>
@@ -60,10 +61,10 @@ export function ReportsPage({ debts, income, negotiations, payments, onOpenIncom
 
       <section className="reports-summary-grid">
         <article>
-          <WalletCards size={17} />
-          <span>Current debt balance</span>
-          <strong>{formatCurrency(currentBalance)}</strong>
-          <em>{debts.length} debts tracked</em>
+          <WalletCards size={16} />
+          <span>Full debt balance</span>
+          <strong>{formatCurrency(fullRemainingBalance)}</strong>
+          <em>{debts.length} account{debts.length === 1 ? "" : "s"}</em>
         </article>
         <article>
           <ReceiptText size={17} />
@@ -73,24 +74,24 @@ export function ReportsPage({ debts, income, negotiations, payments, onOpenIncom
         </article>
         <article>
           <Banknote size={17} />
-          <span>Net income recorded</span>
-          <strong>{formatCurrency(totalIncome)}</strong>
-          <em>{formatCurrency(availableIncome)} still available</em>
+          <span>Available cash</span>
+          <strong className={availableIncome < 0 ? "warning-text" : ""}>{formatCurrency(availableIncome)}</strong>
+          <em>{formatCurrency(totalIncome)} income recorded</em>
         </article>
         <article>
           <TrendingDown size={17} />
-          <span>Accepted savings</span>
+          <span>Settlement savings</span>
           <strong>{formatCurrency(acceptedSavings)}</strong>
           <em>{acceptedAgreements.length} accepted agreement{acceptedAgreements.length === 1 ? "" : "s"}</em>
         </article>
       </section>
 
-      <section className="reports-grid">
+      <section className="reports-main-grid">
         <article className="panel report-panel report-chart-panel">
           <div className="report-panel-heading">
             <div>
-              <h2>Monthly cash flow</h2>
-              <p>Income compared with payments recorded in the same month.</p>
+              <h2>Cash flow</h2>
+              <p>Income and payments by month.</p>
             </div>
             <span>Last 6 months</span>
           </div>
@@ -126,7 +127,7 @@ export function ReportsPage({ debts, income, negotiations, payments, onOpenIncom
             <div className="report-empty-state cashflow-empty-state">
               <Banknote size={18} />
               <strong>No cash flow yet.</strong>
-              <span>Income and payments will create this monthly chart.</span>
+              <span>Add income or record a payment to create this chart.</span>
             </div>
           )}
         </article>
@@ -134,28 +135,35 @@ export function ReportsPage({ debts, income, negotiations, payments, onOpenIncom
         <article className="panel report-panel">
           <div className="report-panel-heading">
             <div>
-              <h2>Debt movement</h2>
-              <p>Based on the payment records saved so far.</p>
+              <h2>Debt progress</h2>
+              <p>Paid amount against remaining balances.</p>
             </div>
             <span>{paidPercent}% paid</span>
           </div>
 
-          <div className="report-progress-row">
-            <span>Starting balance</span>
-            <strong>{formatCurrency(startingBalance)}</strong>
-          </div>
-          <div className="report-progress-track" aria-label={`${paidPercent}% paid`}>
-            <span style={{ width: `${Math.min(100, paidPercent)}%` }} />
-          </div>
-          <div className="report-progress-row">
-            <span>Remaining balance</span>
-            <strong>{formatCurrency(currentBalance)}</strong>
+          <div className="report-progress-card">
+            <div className="report-progress-track" aria-label={`${paidPercent}% paid`}>
+              <span style={{ width: `${Math.min(100, paidPercent)}%` }} />
+            </div>
+            <div className="report-progress-values">
+              <span>
+                Paid
+                <strong>{formatCurrency(totalPaid)}</strong>
+              </span>
+              <span>
+                Remaining
+                <strong>{formatCurrency(fullRemainingBalance)}</strong>
+              </span>
+            </div>
           </div>
 
           <div className="priority-mini-list">
             {priorityRows.map((row) => (
               <div className={`priority-mini-row priority-${row.level.toLowerCase()}`} key={row.level}>
-                <span>{row.level}</span>
+                <div>
+                  <span>{row.level}</span>
+                  <em>{row.count} debt{row.count === 1 ? "" : "s"}</em>
+                </div>
                 <strong>{formatCurrency(row.amountCents)}</strong>
               </div>
             ))}
@@ -163,12 +171,12 @@ export function ReportsPage({ debts, income, negotiations, payments, onOpenIncom
         </article>
       </section>
 
-      <section className="reports-grid">
+      <section className="reports-main-grid">
         <article className="panel report-panel">
           <div className="report-panel-heading">
             <div>
-              <h2>Accepted agreements</h2>
-              <p>Settlement wins that are already part of the plan.</p>
+              <h2>Agreements</h2>
+              <p>Accepted settlements in the plan.</p>
             </div>
             <span>{acceptedAgreements.length}</span>
           </div>
@@ -192,7 +200,7 @@ export function ReportsPage({ debts, income, negotiations, payments, onOpenIncom
             <div className="report-empty-state">
               <Handshake size={18} />
               <strong>No accepted agreements yet.</strong>
-              <span>Accepted settlement agreements will appear here.</span>
+              <span>Accepted settlement records will appear here.</span>
             </div>
           )}
         </article>
@@ -201,7 +209,7 @@ export function ReportsPage({ debts, income, negotiations, payments, onOpenIncom
           <div className="report-panel-heading">
             <div>
               <h2>Recent activity</h2>
-              <p>Latest income, payments, and negotiation records.</p>
+              <p>Latest records saved in GoXPlan.</p>
             </div>
             <span>{recentActivity.length}</span>
           </div>
