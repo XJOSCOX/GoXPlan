@@ -163,14 +163,19 @@ export function App() {
 
   useEffect(() => {
     let cancelled = false;
+    let openedDatabase: Database | undefined;
 
     async function start() {
       try {
         const database = await openDatabase();
+        openedDatabase = database;
         const sessionUserId = getSessionUserId();
         const sessionUser = sessionUserId ? findUserById(database, sessionUserId) : undefined;
 
-        if (cancelled) return;
+        if (cancelled) {
+          database.close();
+          return;
+        }
         setDb(database);
         if (sessionUser) {
           const routePage = getPageFromPath() ?? "dashboard";
@@ -208,6 +213,7 @@ export function App() {
 
     return () => {
       cancelled = true;
+      openedDatabase?.close();
     };
   }, []);
 

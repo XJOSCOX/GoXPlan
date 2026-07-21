@@ -2738,11 +2738,13 @@ async function openStore(mode: IDBTransactionMode) {
     request.onsuccess = () => resolve(request.result);
     request.onerror = () => reject(request.error);
   });
-  return database.transaction(idbStore, mode).objectStore(idbStore);
+  const transaction = database.transaction(idbStore, mode);
+  return { database, store: transaction.objectStore(idbStore), transaction };
 }
 
 async function readDatabaseBytes() {
-  const store = await openStore("readonly");
+  const { database, store, transaction } = await openStore("readonly");
+  closeDatabaseWhenTransactionFinishes(database, transaction);
   const request = store.get(idbKey);
   return new Promise<Uint8Array | undefined>((resolve, reject) => {
     request.onsuccess = () => {
@@ -2754,12 +2756,19 @@ async function readDatabaseBytes() {
 }
 
 async function writeDatabaseBytes(bytes: Uint8Array) {
-  const store = await openStore("readwrite");
+  const { database, store, transaction } = await openStore("readwrite");
+  closeDatabaseWhenTransactionFinishes(database, transaction);
   const request = store.put(bytes, idbKey);
   await new Promise<void>((resolve, reject) => {
     request.onsuccess = () => resolve();
     request.onerror = () => reject(request.error);
   });
+}
+
+function closeDatabaseWhenTransactionFinishes(database: IDBDatabase, transaction: IDBTransaction) {
+  transaction.oncomplete = () => database.close();
+  transaction.onerror = () => database.close();
+  transaction.onabort = () => database.close();
 }
 
 const schema = `
