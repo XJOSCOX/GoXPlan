@@ -69,6 +69,30 @@ export type Debt = {
   updatedAt: string;
 };
 
+export type DebtSnapshotReason =
+  | "DEBT_CREATED"
+  | "DEBT_UPDATED"
+  | "DEBT_DELETED"
+  | "PAYMENT_RECORDED"
+  | "PAYMENT_EDITED"
+  | "PAYMENT_DELETED";
+
+export type DebtSnapshot = {
+  id: string;
+  userId: string;
+  debtId: string | null;
+  creditorName: string;
+  balanceCents: number;
+  obligationCents: number;
+  status: DebtStatus;
+  reason: DebtSnapshotReason;
+  sourceId: string | null;
+  snapshotAt: string;
+  notes: string;
+  createdAt: string;
+  updatedAt: string;
+};
+
 export type DebtInput = {
   id?: string;
   priority: number;

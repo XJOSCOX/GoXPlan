@@ -4,7 +4,7 @@ import { ThemeToggle } from "./ThemeToggle";
 import type { Theme } from "../theme/theme";
 import type { DashboardStats, PublicUser } from "../types";
 
-export type AppPage = "dashboard" | "debts" | "accounts" | "income" | "negotiations" | "payments" | "reports" | "payoff" | "backup";
+export type AppPage = "dashboard" | "debts" | "debtDetail" | "accounts" | "income" | "negotiations" | "payments" | "reports" | "payoff" | "backup";
 
 type AppShellProps = {
   activePage: AppPage;
@@ -20,6 +20,7 @@ type AppShellProps = {
 const pageContent: Record<AppPage, { eyebrow: string; title: string }> = {
   dashboard: { eyebrow: "Overview", title: "Dashboard" },
   debts: { eyebrow: "Planning", title: "Debts" },
+  debtDetail: { eyebrow: "Planning", title: "Debt detail" },
   accounts: { eyebrow: "Workspace", title: "Accounts" },
   income: { eyebrow: "Cash flow", title: "Income" },
   negotiations: { eyebrow: "Activity", title: "Negotiations" },
@@ -57,7 +58,7 @@ export function AppShell({
             <LayoutDashboard size={18} />
             Dashboard
           </button>
-          <button className={activePage === "debts" ? "active" : ""} type="button" onClick={() => onNavigate("debts")}>
+          <button className={activePage === "debts" || activePage === "debtDetail" ? "active" : ""} type="button" onClick={() => onNavigate("debts")}>
             <WalletCards size={18} />
             Debts
             <span>{stats.debts}</span>

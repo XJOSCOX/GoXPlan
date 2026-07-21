@@ -9,6 +9,8 @@ import type {
   Debt,
   DebtCategory,
   DebtInput,
+  DebtSnapshot,
+  DebtSnapshotReason,
   DebtStatus,
   FinancialAccount,
   FinancialAccountInput,
@@ -99,6 +101,21 @@ const backupTables = {
     "pay_for_delete",
     "negotiable",
     "reason",
+    "notes",
+    "created_at",
+    "updated_at",
+  ],
+  debt_snapshots: [
+    "id",
+    "user_id",
+    "debt_id",
+    "creditor_name",
+    "balance_cents",
+    "obligation_cents",
+    "status",
+    "reason",
+    "source_id",
+    "snapshot_at",
     "notes",
     "created_at",
     "updated_at",
@@ -204,6 +221,7 @@ const backupImportOrder: BackupTableName[] = [
   "financial_accounts",
   "account_movements",
   "debts",
+  "debt_snapshots",
   "income",
   "negotiations",
   "payments",
@@ -217,6 +235,7 @@ const backupDeleteOrder: BackupTableName[] = [
   "income",
   "account_movements",
   "payoff_settings",
+  "debt_snapshots",
   "debts",
   "financial_accounts",
 ];
@@ -233,6 +252,7 @@ export type BackupRecordCounts = {
   accounts: number;
   accountMovements: number;
   debts: number;
+  debtSnapshots: number;
   income: number;
   negotiations: number;
   payments: number;
@@ -428,6 +448,21 @@ export function listDebts(db: Database, userId: string): Debt[] {
   );
 
   return (result[0]?.values ?? []).map(toDebt);
+}
+
+export function listDebtSnapshots(db: Database, userId: string): DebtSnapshot[] {
+  const result = db.exec(
+    `
+      SELECT id, user_id, debt_id, creditor_name, balance_cents, obligation_cents, status, reason, source_id,
+        snapshot_at, notes, created_at, updated_at
+      FROM debt_snapshots
+      WHERE user_id = ?
+      ORDER BY snapshot_at DESC, created_at DESC
+    `,
+    [userId],
+  );
+
+  return (result[0]?.values ?? []).map(toDebtSnapshot);
 }
 
 export function listIncome(db: Database, userId: string): Income[] {
@@ -652,68 +687,106 @@ export async function upsertDebt(db: Database, userId: string, input: DebtInput)
   if (settlementCents !== null && settlementCents < 0) throw new Error("Settlement cannot be negative.");
   if (pastDueCents !== null && pastDueCents > balanceCents) throw new Error("Past due amount cannot be greater than the full balance.");
 
-  db.run(
-    `
-      INSERT INTO debts (
-        id, user_id, priority, priority_score, tracked_at, creditor_name, category, balance_cents, settlement_cents,
-        past_due_cents, apr_basis_points, minimum_payment_cents, months_behind, target_date, settlement_expires_at, status,
-        reported, pay_for_delete, negotiable, reason, notes, created_at, updated_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-      ON CONFLICT(id) DO UPDATE SET
-        priority = excluded.priority,
-        priority_score = excluded.priority_score,
-        tracked_at = excluded.tracked_at,
-        creditor_name = excluded.creditor_name,
-        category = excluded.category,
-        balance_cents = excluded.balance_cents,
-        settlement_cents = excluded.settlement_cents,
-        past_due_cents = excluded.past_due_cents,
-        apr_basis_points = excluded.apr_basis_points,
-        minimum_payment_cents = excluded.minimum_payment_cents,
-        months_behind = excluded.months_behind,
-        target_date = excluded.target_date,
-        settlement_expires_at = excluded.settlement_expires_at,
-        status = excluded.status,
-        reported = excluded.reported,
-        pay_for_delete = excluded.pay_for_delete,
-        negotiable = excluded.negotiable,
-        reason = excluded.reason,
-        notes = excluded.notes,
-        updated_at = excluded.updated_at
-    `,
-    [
-      debtId,
-      userId,
-      input.priority,
-      priorityScore,
-      trackedAt,
-      input.creditorName.trim(),
-      input.category,
-      balanceCents,
-      settlementCents,
-      pastDueCents,
-      aprBasisPoints,
-      minimumPaymentCents,
-      monthsBehind,
-      targetDate,
-      settlementExpiresAt,
-      input.status,
-      input.reported ? 1 : 0,
-      input.payForDelete ? 1 : 0,
-      input.negotiable ? 1 : 0,
-      input.reason.trim(),
-      input.notes.trim(),
-      existing?.createdAt ?? now,
-      now,
-    ],
-  );
+  db.run("BEGIN TRANSACTION");
+  try {
+    db.run(
+      `
+        INSERT INTO debts (
+          id, user_id, priority, priority_score, tracked_at, creditor_name, category, balance_cents, settlement_cents,
+          past_due_cents, apr_basis_points, minimum_payment_cents, months_behind, target_date, settlement_expires_at, status,
+          reported, pay_for_delete, negotiable, reason, notes, created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ON CONFLICT(id) DO UPDATE SET
+          priority = excluded.priority,
+          priority_score = excluded.priority_score,
+          tracked_at = excluded.tracked_at,
+          creditor_name = excluded.creditor_name,
+          category = excluded.category,
+          balance_cents = excluded.balance_cents,
+          settlement_cents = excluded.settlement_cents,
+          past_due_cents = excluded.past_due_cents,
+          apr_basis_points = excluded.apr_basis_points,
+          minimum_payment_cents = excluded.minimum_payment_cents,
+          months_behind = excluded.months_behind,
+          target_date = excluded.target_date,
+          settlement_expires_at = excluded.settlement_expires_at,
+          status = excluded.status,
+          reported = excluded.reported,
+          pay_for_delete = excluded.pay_for_delete,
+          negotiable = excluded.negotiable,
+          reason = excluded.reason,
+          notes = excluded.notes,
+          updated_at = excluded.updated_at
+      `,
+      [
+        debtId,
+        userId,
+        input.priority,
+        priorityScore,
+        trackedAt,
+        input.creditorName.trim(),
+        input.category,
+        balanceCents,
+        settlementCents,
+        pastDueCents,
+        aprBasisPoints,
+        minimumPaymentCents,
+        monthsBehind,
+        targetDate,
+        settlementExpiresAt,
+        input.status,
+        input.reported ? 1 : 0,
+        input.payForDelete ? 1 : 0,
+        input.negotiable ? 1 : 0,
+        input.reason.trim(),
+        input.notes.trim(),
+        existing?.createdAt ?? now,
+        now,
+      ],
+    );
+
+    const savedDebt = findDebtById(db, userId, debtId);
+    if (savedDebt) {
+      insertDebtSnapshot(db, userId, {
+        debt: savedDebt,
+        notes: existing ? "Debt details updated." : "Debt added.",
+        reason: existing ? "DEBT_UPDATED" : "DEBT_CREATED",
+        snapshotAt: now,
+        sourceId: debtId,
+      });
+    }
+
+    db.run("COMMIT");
+  } catch (error) {
+    db.run("ROLLBACK");
+    throw error;
+  }
 
   await saveDatabase(db);
   return findDebtById(db, userId, debtId)!;
 }
 
 export async function deleteDebt(db: Database, userId: string, debtId: string) {
-  db.run("DELETE FROM debts WHERE id = ? AND user_id = ?", [debtId, userId]);
+  const existing = findDebtById(db, userId, debtId);
+
+  db.run("BEGIN TRANSACTION");
+  try {
+    if (existing) {
+      insertDebtSnapshot(db, userId, {
+        debt: existing,
+        notes: "Debt deleted.",
+        reason: "DEBT_DELETED",
+        snapshotAt: new Date().toISOString(),
+        sourceId: debtId,
+      });
+    }
+    db.run("DELETE FROM debts WHERE id = ? AND user_id = ?", [debtId, userId]);
+    db.run("COMMIT");
+  } catch (error) {
+    db.run("ROLLBACK");
+    throw error;
+  }
+
   await saveDatabase(db);
 }
 
@@ -1073,6 +1146,19 @@ export async function upsertPayment(db: Database, userId: string, input: Payment
       db.run("UPDATE debts SET balance_cents = ?, updated_at = ? WHERE id = ? AND user_id = ?", [resultingBalanceCents, now, input.debtId, userId]);
     }
 
+    if (resultingBalanceCents !== null || existing?.resultingBalanceCents !== null) {
+      const updatedDebt = findDebtById(db, userId, input.debtId);
+      if (updatedDebt) {
+        insertDebtSnapshot(db, userId, {
+          debt: updatedDebt,
+          notes: existing ? "Payment edited; balance snapshot corrected." : "Payment recorded.",
+          reason: existing ? "PAYMENT_EDITED" : "PAYMENT_RECORDED",
+          snapshotAt: paidAt,
+          sourceId: paymentId,
+        });
+      }
+    }
+
     db.run("COMMIT");
   } catch (error) {
     db.run("ROLLBACK");
@@ -1091,6 +1177,16 @@ export async function deletePayment(db: Database, userId: string, paymentId: str
   try {
     restorePaymentAccountMovement(db, userId, existing);
     restoreDebtSnapshotFromPayment(db, userId, paymentId);
+    const restoredDebt = existing.debtId ? findDebtById(db, userId, existing.debtId) : undefined;
+    if (restoredDebt && existing.resultingBalanceCents !== null) {
+      insertDebtSnapshot(db, userId, {
+        debt: restoredDebt,
+        notes: "Payment deleted; balance restored.",
+        reason: "PAYMENT_DELETED",
+        snapshotAt: new Date().toISOString(),
+        sourceId: paymentId,
+      });
+    }
     db.run("DELETE FROM payments WHERE id = ? AND user_id = ?", [paymentId, userId]);
     db.run("COMMIT");
   } catch (error) {
@@ -1280,10 +1376,11 @@ function normalizeBackupPayload(input: unknown): GoXPlanBackup {
       throw new Error(`The ${tableName} backup section uses columns this app version cannot restore.`);
     }
 
-    const normalizedRows = rows.map((row) => {
+    const normalizedRows = rows.map((row, rowIndex) => {
       if (!Array.isArray(row) || row.length !== columns.length) {
         throw new Error(`The ${tableName} backup section has a row with the wrong shape.`);
       }
+      row.forEach((value, valueIndex) => assertBackupCellValue(tableName, columns[valueIndex], rowIndex, value));
       return row;
     });
 
@@ -1296,6 +1393,14 @@ function normalizeBackupPayload(input: unknown): GoXPlanBackup {
     tables,
     version: 1,
   };
+}
+
+function assertBackupCellValue(tableName: BackupTableName, columnName: string, rowIndex: number, value: unknown) {
+  if (value === null) return;
+  if (typeof value === "string" || typeof value === "boolean") return;
+  if (typeof value === "number" && Number.isFinite(value)) return;
+
+  throw new Error(`The ${tableName} backup section has an unsupported value in ${columnName} on row ${rowIndex + 1}.`);
 }
 
 function upgradeBackupRowsWithOptionalColumns(tableName: BackupTableName, columns: string[], rows: unknown[], expectedColumns: string[]) {
@@ -1322,6 +1427,7 @@ function getBackupCounts(backup: GoXPlanBackup): BackupRecordCounts {
     accounts: backup.tables.financial_accounts.rows.length,
     accountMovements: backup.tables.account_movements.rows.length,
     debts: backup.tables.debts.rows.length,
+    debtSnapshots: backup.tables.debt_snapshots.rows.length,
     income: backup.tables.income.rows.length,
     negotiations: backup.tables.negotiations.rows.length,
     payments: backup.tables.payments.rows.length,
@@ -1382,6 +1488,16 @@ function sanitizeBackupRow(db: Database, userId: string, tableName: BackupTableN
   if (tableName === "debts") {
     sanitizeStringEnumValue(values, columns, "category", normalizeDebtCategory, "OTHER");
     sanitizeDebtStatusValue(values, columns, "status", "OPEN");
+  }
+
+  if (tableName === "debt_snapshots") {
+    sanitizeDebtStatusValue(values, columns, "status", "OPEN");
+    sanitizeStringEnumValue(values, columns, "reason", normalizeDebtSnapshotReason, "DEBT_UPDATED");
+    const debtIdIndex = columns.indexOf("debt_id");
+    const debtId = debtIdIndex >= 0 ? values[debtIdIndex] : null;
+    if (debtId && !findDebtById(db, userId, String(debtId))) {
+      values[debtIdIndex] = null;
+    }
   }
 
   if (tableName === "financial_accounts") {
@@ -1527,6 +1643,55 @@ function firstUser(result: ReturnType<Database["exec"]>): StoredUser | undefined
     createdAt: String(row[7]),
     updatedAt: String(row[8]),
   };
+}
+
+function insertDebtSnapshot(
+  db: Database,
+  userId: string,
+  input: {
+    debt: Debt;
+    notes: string;
+    reason: DebtSnapshotReason;
+    snapshotAt: string;
+    sourceId: string | null;
+  },
+) {
+  const now = new Date().toISOString();
+  const snapshotAt = parseSnapshotDateTime(input.snapshotAt, now);
+
+  db.run(
+    `
+      INSERT INTO debt_snapshots (
+        id, user_id, debt_id, creditor_name, balance_cents, obligation_cents, status, reason,
+        source_id, snapshot_at, notes, created_at, updated_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `,
+    [
+      crypto.randomUUID(),
+      userId,
+      input.debt.id,
+      input.debt.creditorName,
+      input.debt.balanceCents,
+      getSnapshotObligationCents(input.debt),
+      input.debt.status,
+      input.reason,
+      input.sourceId,
+      snapshotAt,
+      input.notes,
+      now,
+      now,
+    ],
+  );
+}
+
+function getSnapshotObligationCents(debt: Debt) {
+  if (debt.status === "SETTLED") return 0;
+  if (debt.pastDueCents !== null && debt.pastDueCents > 0) return debt.pastDueCents;
+  if ((debt.status === "COLLECTION" || debt.status === "CLOSED" || debt.status === "NOT_REPORTED") && debt.settlementCents !== null) {
+    return debt.settlementCents;
+  }
+  if (debt.minimumPaymentCents !== null && debt.minimumPaymentCents > 0) return debt.minimumPaymentCents;
+  return Math.max(0, debt.balanceCents);
 }
 
 function findDebtById(db: Database, userId: string, debtId: string) {
@@ -1764,6 +1929,24 @@ function toDebt(row: unknown[]): Debt {
   };
 }
 
+function toDebtSnapshot(row: unknown[]): DebtSnapshot {
+  return {
+    id: String(row[0]),
+    userId: String(row[1]),
+    debtId: row[2] === null || row[2] === undefined ? null : String(row[2]),
+    creditorName: String(row[3] ?? "Removed debt"),
+    balanceCents: Number(row[4] ?? 0),
+    obligationCents: Number(row[5] ?? 0),
+    status: normalizeDebtStatus(String(row[6] ?? "OPEN")),
+    reason: normalizeDebtSnapshotReason(String(row[7] ?? "DEBT_UPDATED")),
+    sourceId: row[8] === null || row[8] === undefined ? null : String(row[8]),
+    snapshotAt: String(row[9]),
+    notes: String(row[10] ?? ""),
+    createdAt: String(row[11]),
+    updatedAt: String(row[12]),
+  };
+}
+
 function toIncome(row: unknown[]): Income {
   const amountCents = Number(row[3]);
   const grossAmountCents = row[8] === undefined ? amountCents : Number(row[9]);
@@ -1930,6 +2113,7 @@ function normalizePriorityScore(value: number) {
 }
 
 const debtStatuses: DebtStatus[] = ["OPEN", "PAST_DUE", "COLLECTION", "CLOSED", "NOT_REPORTED", "SETTLED"];
+const debtSnapshotReasons: DebtSnapshotReason[] = ["DEBT_CREATED", "DEBT_UPDATED", "DEBT_DELETED", "PAYMENT_RECORDED", "PAYMENT_EDITED", "PAYMENT_DELETED"];
 
 function isDebtStatus(value: unknown): value is DebtStatus {
   return typeof value === "string" && debtStatuses.includes(value as DebtStatus);
@@ -1941,6 +2125,14 @@ function normalizeDebtStatus(value: string): DebtStatus {
   }
 
   return "OPEN";
+}
+
+function normalizeDebtSnapshotReason(value: string): DebtSnapshotReason {
+  if (debtSnapshotReasons.includes(value as DebtSnapshotReason)) {
+    return value as DebtSnapshotReason;
+  }
+
+  return "DEBT_UPDATED";
 }
 
 function normalizeDebtCategory(value: string): DebtCategory {
@@ -2376,6 +2568,14 @@ function parseDateToIso(value: string, fallback: string) {
   return new Date(`${cleanDate}T12:00:00.000Z`).toISOString();
 }
 
+function parseSnapshotDateTime(value: string, fallback: string) {
+  const cleanValue = value.trim();
+  if (!cleanValue) return fallback;
+  if (/^\d{4}-\d{2}-\d{2}$/.test(cleanValue)) return new Date(`${cleanValue}T12:00:00.000Z`).toISOString();
+  const date = new Date(cleanValue);
+  return Number.isNaN(date.getTime()) ? fallback : date.toISOString();
+}
+
 function ensureDebtColumns(db: Database) {
   const columns = new Set((db.exec("PRAGMA table_info(debts)")[0]?.values ?? []).map((row) => String(row[1])));
   const additions: Array<[string, string]> = [
@@ -2595,6 +2795,22 @@ const schema = `
     updated_at TEXT NOT NULL
   );
 
+  CREATE TABLE IF NOT EXISTS debt_snapshots (
+    id TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    debt_id TEXT REFERENCES debts(id) ON DELETE SET NULL,
+    creditor_name TEXT NOT NULL,
+    balance_cents INTEGER NOT NULL DEFAULT 0,
+    obligation_cents INTEGER NOT NULL DEFAULT 0,
+    status TEXT NOT NULL DEFAULT 'OPEN',
+    reason TEXT NOT NULL DEFAULT 'DEBT_UPDATED',
+    source_id TEXT,
+    snapshot_at TEXT NOT NULL,
+    notes TEXT NOT NULL DEFAULT '',
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+  );
+
   CREATE TABLE IF NOT EXISTS financial_accounts (
     id TEXT PRIMARY KEY,
     user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -2726,6 +2942,8 @@ const schema = `
   );
 
   CREATE INDEX IF NOT EXISTS idx_debts_user ON debts(user_id);
+  CREATE INDEX IF NOT EXISTS idx_debt_snapshots_user ON debt_snapshots(user_id);
+  CREATE INDEX IF NOT EXISTS idx_debt_snapshots_debt ON debt_snapshots(debt_id);
   CREATE INDEX IF NOT EXISTS idx_financial_accounts_user ON financial_accounts(user_id);
   CREATE INDEX IF NOT EXISTS idx_account_movements_user ON account_movements(user_id);
   CREATE INDEX IF NOT EXISTS idx_account_movements_from_account ON account_movements(from_account_id);

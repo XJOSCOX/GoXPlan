@@ -11,6 +11,7 @@ import {
   importUserBackup,
   listAccountMovements,
   listDebts,
+  listDebtSnapshots,
   listFinancialAccounts,
   listPayoffMilestones,
   listPayments,
@@ -397,6 +398,47 @@ describe("local database stability", () => {
     }
   });
 
+  test("records debt balance snapshots and preserves them through backup import", async () => {
+    const debt = await upsertDebt(db, userId, debtInput({ balance: "1000", creditorName: "Snapshot debt", pastDue: "200", status: "PAST_DUE" }));
+    await upsertDebt(
+      db,
+      userId,
+      debtInput({ id: debt.id, balance: "900", creditorName: "Snapshot debt", pastDue: "150", status: "PAST_DUE" }),
+    );
+    await upsertPayment(db, userId, paymentInput({ amount: "100", debtId: debt.id, resultingBalance: "800" }));
+
+    const snapshots = listDebtSnapshots(db, userId).filter((snapshot) => snapshot.debtId === debt.id);
+    expect(snapshots.map((snapshot) => snapshot.reason).sort()).toEqual(["DEBT_CREATED", "DEBT_UPDATED", "PAYMENT_RECORDED"]);
+    expect(snapshots.find((snapshot) => snapshot.reason === "PAYMENT_RECORDED")).toMatchObject({ balanceCents: 80000 });
+
+    const backup = exportUserBackup(db, userId);
+    expect(getBackupPreview(backup).counts.debtSnapshots).toBeGreaterThanOrEqual(3);
+
+    const targetDb = createSeededDatabase();
+    try {
+      await importUserBackup(targetDb, userId, backup, "REPLACE");
+
+      expect(listDebtSnapshots(targetDb, userId).filter((snapshot) => snapshot.debtId === debt.id)).toHaveLength(3);
+    } finally {
+      targetDb.close();
+    }
+  });
+
+  test("adds correction snapshots when a balance-changing payment is edited or deleted", async () => {
+    const debt = await upsertDebt(db, userId, debtInput({ balance: "1000", creditorName: "Correction debt" }));
+    const payment = await upsertPayment(db, userId, paymentInput({ amount: "100", debtId: debt.id, resultingBalance: "900" }));
+
+    await upsertPayment(db, userId, paymentInput({ id: payment.id, amount: "150", debtId: debt.id, resultingBalance: "850" }));
+    await deletePayment(db, userId, payment.id);
+
+    const reasons = listDebtSnapshots(db, userId)
+      .filter((snapshot) => snapshot.debtId === debt.id)
+      .map((snapshot) => snapshot.reason);
+
+    expect(reasons).toEqual(expect.arrayContaining(["PAYMENT_RECORDED", "PAYMENT_EDITED", "PAYMENT_DELETED"]));
+    expect(listDebts(db, userId).find((item) => item.id === debt.id)?.balanceCents).toBe(100000);
+  });
+
   test("merge keeps existing records while replace clears records missing from the backup", async () => {
     await upsertDebt(db, userId, debtInput({ creditorName: "Existing debt" }));
 
@@ -466,6 +508,7 @@ describe("local database stability", () => {
     setBackupCell(backup, "debts", "category", "BAD_CATEGORY");
     setBackupCell(backup, "debts", "status", "BAD_STATUS");
     setBackupCell(backup, "payments", "payment_type", "BAD_PAYMENT");
+    setBackupCell(backup, "debt_snapshots", "reason", "BAD_REASON");
     setBackupCell(backup, "payoff_settings", "strategy", "BAD_STRATEGY");
     setBackupCell(backup, "payoff_settings", "budget_frequency", "BAD_FREQUENCY");
 
@@ -475,9 +518,27 @@ describe("local database stability", () => {
 
       expect(listDebts(targetDb, userId)[0]).toMatchObject({ category: "OTHER", status: "OPEN" });
       expect(listPayments(targetDb, userId)[0]).toMatchObject({ paymentType: "REGULAR" });
+      expect(listDebtSnapshots(targetDb, userId).some((snapshot) => snapshot.reason === "DEBT_UPDATED")).toBe(true);
       expect(getPayoffSettings(targetDb, userId)).toMatchObject({ budgetFrequency: "MONTHLY", strategy: "HYBRID" });
     } finally {
       targetDb.close();
+    }
+  });
+
+  test("rejects malformed backup values before replace can clear current data", async () => {
+    await upsertDebt(db, userId, debtInput({ creditorName: "Keep this debt" }));
+
+    const sourceDb = createSeededDatabase();
+    try {
+      await upsertDebt(sourceDb, userId, debtInput({ creditorName: "Malformed imported debt" }));
+      const backup = exportUserBackup(sourceDb, userId);
+      setBackupCell(backup, "debts", "creditor_name", { bad: true });
+
+      expect(() => getBackupPreview(backup)).toThrow("unsupported value in creditor_name");
+      await expect(importUserBackup(db, userId, backup, "REPLACE")).rejects.toThrow("unsupported value in creditor_name");
+      expect(listDebts(db, userId).map((debt) => debt.creditorName)).toEqual(["Keep this debt"]);
+    } finally {
+      sourceDb.close();
     }
   });
 

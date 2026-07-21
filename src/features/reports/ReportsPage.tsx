@@ -1,11 +1,12 @@
 import { ArrowLeftRight, Banknote, CalendarDays, CircleDollarSign, Handshake, Landmark, ReceiptText, TrendingDown, WalletCards } from "lucide-react";
 import { buildFinancialSummary } from "../../lib/financialSummary";
-import type { AccountMovement, Debt, FinancialAccount, Income, Negotiation, Payment } from "../../types";
+import type { AccountMovement, Debt, DebtSnapshot, FinancialAccount, Income, Negotiation, Payment } from "../../types";
 
 type ReportsPageProps = {
   accountMovements: AccountMovement[];
   accounts: FinancialAccount[];
   debts: Debt[];
+  debtSnapshots: DebtSnapshot[];
   income: Income[];
   negotiations: Negotiation[];
   payments: Payment[];
@@ -23,7 +24,37 @@ type ActivityItem = {
   tone: "income" | "movement" | "negotiation" | "payment";
 };
 
-export function ReportsPage({ accountMovements, accounts, debts, income, negotiations, payments, onOpenIncome, onOpenPayments }: ReportsPageProps) {
+type DebtHistoryChartRow = {
+  balanceCents: number;
+  key: string;
+  label: string;
+  obligationCents: number;
+};
+
+type DebtHistoryMovementRow = {
+  balanceChangeCents: number;
+  creditorName: string;
+  key: string;
+  latestBalanceCents: number;
+  latestSnapshotAt: string;
+  obligationChangeCents: number;
+};
+
+type DebtHistoryReport = {
+  balanceChangeCents: number;
+  chartRows: DebtHistoryChartRow[];
+  firstBalanceCents: number;
+  firstObligationCents: number;
+  hasHistory: boolean;
+  latestBalanceCents: number;
+  latestObligationCents: number;
+  latestSnapshotAt: string | null;
+  movementRows: DebtHistoryMovementRow[];
+  obligationChangeCents: number;
+  snapshotCount: number;
+};
+
+export function ReportsPage({ accountMovements, accounts, debts, debtSnapshots, income, negotiations, payments, onOpenIncome, onOpenPayments }: ReportsPageProps) {
   const financialSummary = buildFinancialSummary({ accountMovements, accounts, debts, income, negotiations, payments });
   const movementSummary = financialSummary.accountMovementSummary;
   const cashAccounts = financialSummary.cashAccounts;
@@ -47,6 +78,8 @@ export function ReportsPage({ accountMovements, accounts, debts, income, negotia
   );
   const recentActivity = buildRecentActivity(income, payments, negotiations, accountMovements).slice(0, 10);
   const priorityRows = financialSummary.priorityExposureRows;
+  const debtHistoryReport = buildDebtHistoryReport(debtSnapshots);
+  const maxDebtHistoryValue = Math.max(...debtHistoryReport.chartRows.flatMap((row) => [row.balanceCents, row.obligationCents]), 1);
 
   return (
     <div className="page-stack reports-page">
@@ -93,6 +126,94 @@ export function ReportsPage({ accountMovements, accounts, debts, income, negotia
           <strong>{formatCurrency(acceptedSavings)}</strong>
           <em>{acceptedAgreements.length} accepted agreement{acceptedAgreements.length === 1 ? "" : "s"}</em>
         </article>
+      </section>
+
+      <section className="panel report-panel debt-history-report-panel">
+        <div className="report-panel-heading">
+          <div>
+            <h2>Debt history</h2>
+            <p>Saved snapshots from debt changes and payment activity.</p>
+          </div>
+          <span>{debtHistoryReport.snapshotCount} snapshot{debtHistoryReport.snapshotCount === 1 ? "" : "s"}</span>
+        </div>
+
+        {debtHistoryReport.hasHistory ? (
+          <>
+            <div className="debt-history-report-grid">
+              <article>
+                <span>Balance change</span>
+                <strong className={getHistoryChangeClass(debtHistoryReport.balanceChangeCents)}>{formatSignedCurrency(debtHistoryReport.balanceChangeCents)}</strong>
+                <em>
+                  {formatCurrency(debtHistoryReport.firstBalanceCents)} to {formatCurrency(debtHistoryReport.latestBalanceCents)}
+                </em>
+              </article>
+              <article>
+                <span>Obligation change</span>
+                <strong className={getHistoryChangeClass(debtHistoryReport.obligationChangeCents)}>{formatSignedCurrency(debtHistoryReport.obligationChangeCents)}</strong>
+                <em>
+                  {formatCurrency(debtHistoryReport.firstObligationCents)} to {formatCurrency(debtHistoryReport.latestObligationCents)}
+                </em>
+              </article>
+              <article>
+                <span>Latest snapshot</span>
+                <strong>{debtHistoryReport.latestSnapshotAt ? formatShortDate(debtHistoryReport.latestSnapshotAt) : "-"}</strong>
+                <em>Most recent debt state saved</em>
+              </article>
+              <article>
+                <span>Biggest movement</span>
+                <strong>{debtHistoryReport.movementRows[0]?.creditorName ?? "-"}</strong>
+                <em>{debtHistoryReport.movementRows[0] ? formatSignedCurrency(debtHistoryReport.movementRows[0].balanceChangeCents) : "No movement yet"}</em>
+              </article>
+            </div>
+
+            <div className="debt-history-report-body">
+              <div className="debt-history-report-chart" aria-label="Debt balance and obligation history">
+                {debtHistoryReport.chartRows.map((row) => (
+                  <div className="debt-history-report-column" key={row.key}>
+                    <div>
+                      <span
+                        className="balance"
+                        style={{ height: `${getBarHeight(row.balanceCents, maxDebtHistoryValue)}%` }}
+                        title={`Balance ${formatCurrency(row.balanceCents)}`}
+                      />
+                      <span
+                        className="obligation"
+                        style={{ height: `${getBarHeight(row.obligationCents, maxDebtHistoryValue)}%` }}
+                        title={`Obligations ${formatCurrency(row.obligationCents)}`}
+                      />
+                    </div>
+                    <strong>{row.label}</strong>
+                  </div>
+                ))}
+              </div>
+
+              <div className="debt-history-report-list">
+                <div className="debt-history-report-list-head">
+                  <span>Largest changes</span>
+                  <em>Balance / obligation</em>
+                </div>
+                {debtHistoryReport.movementRows.slice(0, 5).map((row) => (
+                  <div className="debt-history-report-row" key={row.key}>
+                    <div>
+                      <strong>{row.creditorName}</strong>
+                      <span>{formatShortDate(row.latestSnapshotAt)}</span>
+                    </div>
+                    <div>
+                      <strong className={getHistoryChangeClass(row.balanceChangeCents)}>{formatSignedCurrency(row.balanceChangeCents)}</strong>
+                      <em className={getHistoryChangeClass(row.obligationChangeCents)}>{formatSignedCurrency(row.obligationChangeCents)}</em>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </>
+        ) : (
+          <div className="report-empty-state">
+            <TrendingDown size={18} />
+            <strong>No debt history yet.</strong>
+            <span>Edit a debt or record a payment to start building snapshot reports.</span>
+          </div>
+        )}
       </section>
 
       <section className="reports-main-grid reports-cash-grid">
@@ -332,6 +453,96 @@ function ReportMoneyRow({ label, signed = false, strong = false, tone, value }: 
   );
 }
 
+function buildDebtHistoryReport(debtSnapshots: DebtSnapshot[]): DebtHistoryReport {
+  const sortedSnapshots = debtSnapshots
+    .slice()
+    .sort((left, right) => new Date(left.snapshotAt).getTime() - new Date(right.snapshotAt).getTime() || left.creditorName.localeCompare(right.creditorName));
+
+  if (!sortedSnapshots.length) {
+    return {
+      balanceChangeCents: 0,
+      chartRows: [],
+      firstBalanceCents: 0,
+      firstObligationCents: 0,
+      hasHistory: false,
+      latestBalanceCents: 0,
+      latestObligationCents: 0,
+      latestSnapshotAt: null,
+      movementRows: [],
+      obligationChangeCents: 0,
+      snapshotCount: 0,
+    };
+  }
+
+  const currentDebtState = new Map<string, { balanceCents: number; obligationCents: number }>();
+  const dailyRows = new Map<string, DebtHistoryChartRow>();
+
+  for (const snapshot of sortedSnapshots) {
+    const key = getDebtSnapshotKey(snapshot);
+    currentDebtState.set(key, {
+      balanceCents: getEffectiveSnapshotBalance(snapshot),
+      obligationCents: getEffectiveSnapshotObligation(snapshot),
+    });
+
+    const dateKey = getDateKey(snapshot.snapshotAt);
+    const totals = sumDebtHistoryState(currentDebtState);
+    dailyRows.set(dateKey, {
+      balanceCents: totals.balanceCents,
+      key: dateKey,
+      label: formatShortDate(snapshot.snapshotAt),
+      obligationCents: totals.obligationCents,
+    });
+  }
+
+  const chartRows = Array.from(dailyRows.values()).slice(-8);
+  const firstRow = chartRows[0];
+  const latestRow = chartRows[chartRows.length - 1];
+  const movementRows = buildDebtMovementRows(sortedSnapshots);
+
+  return {
+    balanceChangeCents: latestRow.balanceCents - firstRow.balanceCents,
+    chartRows,
+    firstBalanceCents: firstRow.balanceCents,
+    firstObligationCents: firstRow.obligationCents,
+    hasHistory: true,
+    latestBalanceCents: latestRow.balanceCents,
+    latestObligationCents: latestRow.obligationCents,
+    latestSnapshotAt: sortedSnapshots[sortedSnapshots.length - 1].snapshotAt,
+    movementRows,
+    obligationChangeCents: latestRow.obligationCents - firstRow.obligationCents,
+    snapshotCount: sortedSnapshots.length,
+  };
+}
+
+function buildDebtMovementRows(sortedSnapshots: DebtSnapshot[]) {
+  const byDebt = new Map<string, DebtSnapshot[]>();
+  for (const snapshot of sortedSnapshots) {
+    const key = getDebtSnapshotKey(snapshot);
+    byDebt.set(key, [...(byDebt.get(key) ?? []), snapshot]);
+  }
+
+  return Array.from(byDebt.entries())
+    .map(([key, snapshots]) => {
+      const first = snapshots[0];
+      const latest = snapshots[snapshots.length - 1];
+      return {
+        balanceChangeCents: getEffectiveSnapshotBalance(latest) - getEffectiveSnapshotBalance(first),
+        creditorName: latest.creditorName || first.creditorName,
+        key,
+        latestBalanceCents: getEffectiveSnapshotBalance(latest),
+        latestSnapshotAt: latest.snapshotAt,
+        obligationChangeCents: getEffectiveSnapshotObligation(latest) - getEffectiveSnapshotObligation(first),
+      };
+    })
+    .sort(
+      (left, right) =>
+        Math.abs(right.balanceChangeCents) - Math.abs(left.balanceChangeCents) ||
+        Math.abs(right.obligationChangeCents) - Math.abs(left.obligationChangeCents) ||
+        right.latestBalanceCents - left.latestBalanceCents ||
+        left.creditorName.localeCompare(right.creditorName),
+    );
+}
+
 function buildMonthlyRows(income: Income[], payments: Payment[], movements: AccountMovement[]) {
   const latestDate = getLatestDate([...income.map((item) => item.receivedAt), ...payments.map((item) => item.paidAt), ...movements.map((item) => item.occurredAt)]);
   const rows = [];
@@ -448,6 +659,40 @@ function getBarHeight(value: number, max: number) {
   return value ? Math.max(8, Math.round((value / max) * 100)) : 3;
 }
 
+function getDebtSnapshotKey(snapshot: DebtSnapshot) {
+  return snapshot.debtId ?? `removed:${snapshot.creditorName.toLowerCase().trim()}`;
+}
+
+function getEffectiveSnapshotBalance(snapshot: DebtSnapshot) {
+  return snapshot.reason === "DEBT_DELETED" ? 0 : snapshot.balanceCents;
+}
+
+function getEffectiveSnapshotObligation(snapshot: DebtSnapshot) {
+  return snapshot.reason === "DEBT_DELETED" ? 0 : snapshot.obligationCents;
+}
+
+function sumDebtHistoryState(state: Map<string, { balanceCents: number; obligationCents: number }>) {
+  return Array.from(state.values()).reduce(
+    (totals, item) => ({
+      balanceCents: totals.balanceCents + item.balanceCents,
+      obligationCents: totals.obligationCents + item.obligationCents,
+    }),
+    { balanceCents: 0, obligationCents: 0 },
+  );
+}
+
+function getDateKey(value: string) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value.slice(0, 10) || value;
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+}
+
+function getHistoryChangeClass(cents: number) {
+  if (cents < 0) return "history-change-good";
+  if (cents > 0) return "history-change-bad";
+  return "";
+}
+
 function getMonthKey(date: Date) {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`;
 }
@@ -462,6 +707,10 @@ function formatStatus(value: string) {
 
 function formatDate(value: string) {
   return new Intl.DateTimeFormat("en-US", { day: "numeric", month: "short", year: "numeric" }).format(new Date(value));
+}
+
+function formatShortDate(value: string) {
+  return new Intl.DateTimeFormat("en-US", { day: "numeric", month: "short" }).format(new Date(value));
 }
 
 function formatCurrency(cents: number) {

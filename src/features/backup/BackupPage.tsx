@@ -3,7 +3,7 @@ import { useState } from "react";
 import { ConfirmDialog } from "../../components/ConfirmDialog";
 import { getBackupPreview, type BackupImportMode, type BackupImportSummary, type BackupPreview, type GoXPlanBackup } from "../../db/localDatabase";
 import { buildFinancialSummary } from "../../lib/financialSummary";
-import type { AccountMovement, Debt, FinancialAccount, Income, Negotiation, Payment } from "../../types";
+import type { AccountMovement, Debt, DebtSnapshot, FinancialAccount, Income, Negotiation, Payment } from "../../types";
 
 type BackupPageProps = {
   accountMovements: AccountMovement[];
@@ -12,6 +12,7 @@ type BackupPageProps = {
     accounts: number;
     accountMovements: number;
     debts: number;
+    debtSnapshots: number;
     income: number;
     negotiations: number;
     payments: number;
@@ -19,6 +20,7 @@ type BackupPageProps = {
     payoffSettings: number;
   };
   debts: Debt[];
+  debtSnapshots: DebtSnapshot[];
   income: Income[];
   negotiations: Negotiation[];
   onExportBackup: () => Promise<GoXPlanBackup>;
@@ -26,7 +28,7 @@ type BackupPageProps = {
   payments: Payment[];
 };
 
-export function BackupPage({ accountMovements, accounts, counts, debts, income, negotiations, onExportBackup, onImportBackup, payments }: BackupPageProps) {
+export function BackupPage({ accountMovements, accounts, counts, debts, debtSnapshots, income, negotiations, onExportBackup, onImportBackup, payments }: BackupPageProps) {
   const [error, setError] = useState("");
   const [importMode, setImportMode] = useState<BackupImportMode>("MERGE");
   const [isExporting, setIsExporting] = useState(false);
@@ -79,6 +81,13 @@ export function BackupPage({ accountMovements, accounts, counts, debts, income, 
     setSuccess("");
     downloadText(`goxplan-payments-${fileDate()}.csv`, paymentsToCsv(payments), "text/csv;charset=utf-8");
     setSuccess("Payments CSV exported.");
+  }
+
+  function exportDebtHistoryCsv() {
+    setError("");
+    setSuccess("");
+    downloadText(`goxplan-debt-history-${fileDate()}.csv`, debtHistoryToCsv(debtSnapshots), "text/csv;charset=utf-8");
+    setSuccess("Debt history CSV exported.");
   }
 
   function exportNegotiationsCsv() {
@@ -185,7 +194,7 @@ export function BackupPage({ accountMovements, accounts, counts, debts, income, 
             <FileJson size={19} />
             <div>
               <h2>Full backup</h2>
-              <p>Exports debts, accounts, income, negotiations, payments, and payoff settings.</p>
+              <p>Exports debts, balance history, accounts, movements, income, negotiations, payments, payoff settings, and milestones.</p>
             </div>
           </div>
           <button className="primary-button backup-wide-button" type="button" onClick={() => void exportBackup()} disabled={isExporting}>
@@ -210,6 +219,10 @@ export function BackupPage({ accountMovements, accounts, counts, debts, income, 
             <button className="icon-text-button" type="button" onClick={exportDebtsCsv} disabled={!debts.length}>
               <Download size={16} />
               Debts
+            </button>
+            <button className="icon-text-button" type="button" onClick={exportDebtHistoryCsv} disabled={!debtSnapshots.length}>
+              <Download size={16} />
+              History
             </button>
             <button className="icon-text-button" type="button" onClick={exportAccountsCsv} disabled={!accounts.length}>
               <Download size={16} />
@@ -262,6 +275,7 @@ export function BackupPage({ accountMovements, accounts, counts, debts, income, 
                 <strong>{formatDateTime(selectedPreview.exportedAt)}</strong>
               </div>
               <PreviewCount label="Debts" value={selectedPreview.counts.debts} />
+              <PreviewCount label="History" value={selectedPreview.counts.debtSnapshots} />
               <PreviewCount label="Accounts" value={selectedPreview.counts.accounts} />
               <PreviewCount label="Movements" value={selectedPreview.counts.accountMovements} />
               <PreviewCount label="Income" value={selectedPreview.counts.income} />
@@ -274,6 +288,7 @@ export function BackupPage({ accountMovements, accounts, counts, debts, income, 
               <BackupDetail label={`${selectedPreview.details.tradingAccounts} trading account${selectedPreview.details.tradingAccounts === 1 ? "" : "s"}`} />
               <BackupDetail label={`${selectedPreview.details.tradingIncome} trading payout${selectedPreview.details.tradingIncome === 1 ? "" : "s"}`} />
               <BackupDetail label={`${selectedPreview.details.paymentSnapshots} payment snapshot${selectedPreview.details.paymentSnapshots === 1 ? "" : "s"}`} />
+              <BackupDetail label={`${selectedPreview.counts.debtSnapshots} balance history point${selectedPreview.counts.debtSnapshots === 1 ? "" : "s"}`} />
               <BackupDetail label={formatFrequencyCoverage(selectedPreview.details.payoffFrequencies)} />
             </div>
           </div>
@@ -348,7 +363,7 @@ function BackupDetail({ label }: { label: string }) {
 }
 
 function hasAnyRecords(counts: BackupPageProps["counts"]) {
-  return counts.accounts + counts.accountMovements + counts.debts + counts.income + counts.negotiations + counts.payments + counts.payoffMilestones > 0;
+  return counts.accounts + counts.accountMovements + counts.debts + counts.debtSnapshots + counts.income + counts.negotiations + counts.payments + counts.payoffMilestones > 0;
 }
 
 function debtsToCsv(debts: Debt[]) {
@@ -380,6 +395,36 @@ function debtsToCsv(debts: Debt[]) {
     debt.notes,
     debt.trackedAt,
   ]);
+
+  return rowsToCsv(headers, rows);
+}
+
+function debtHistoryToCsv(snapshots: DebtSnapshot[]) {
+  const headers = [
+    "Snapshot date",
+    "Creditor",
+    "Reason",
+    "Status",
+    "Balance",
+    "Obligation",
+    "Notes",
+    "Source id",
+    "Created at",
+  ];
+  const rows = snapshots
+    .slice()
+    .sort((left, right) => right.snapshotAt.localeCompare(left.snapshotAt) || right.createdAt.localeCompare(left.createdAt))
+    .map((snapshot) => [
+      snapshot.snapshotAt,
+      snapshot.creditorName,
+      snapshot.reason,
+      snapshot.status,
+      centsToDecimal(snapshot.balanceCents),
+      centsToDecimal(snapshot.obligationCents),
+      snapshot.notes,
+      snapshot.sourceId ?? "",
+      snapshot.createdAt,
+    ]);
 
   return rowsToCsv(headers, rows);
 }
@@ -654,7 +699,7 @@ function formatDateTime(value: string) {
 function formatImportSummary(summary: BackupImportSummary, safetySnapshotCreated: boolean) {
   const action = summary.mode === "REPLACE" ? "Backup restored" : "Backup merged";
   const counts = summary.counts;
-  const details = `${counts.debts} debts, ${counts.accounts} accounts, ${counts.accountMovements} movements, ${counts.income} income records, ${counts.negotiations} negotiations, ${counts.payments} payments, ${counts.payoffMilestones} milestones`;
+  const details = `${counts.debts} debts, ${counts.debtSnapshots} history points, ${counts.accounts} accounts, ${counts.accountMovements} movements, ${counts.income} income records, ${counts.negotiations} negotiations, ${counts.payments} payments, ${counts.payoffMilestones} milestones`;
   return safetySnapshotCreated ? `${action}. Safety snapshot downloaded. Imported ${details}.` : `${action}. Imported ${details}.`;
 }
 

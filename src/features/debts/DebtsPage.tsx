@@ -12,6 +12,7 @@ type DebtsPageProps = {
   onImportKnownDebts: () => Promise<void>;
   onSave: (input: DebtInput) => Promise<void>;
   onDelete: (debtId: string) => Promise<void>;
+  onOpenDebt: (debtId: string) => void;
 };
 
 type DebtSortMode = "priority" | "creditor" | "balance-desc" | "balance-asc" | "tracked-desc" | "target-asc";
@@ -67,7 +68,7 @@ const priorityScoreByLevel = priorityLevelRanges.reduce(
   {} as Record<DebtPriorityLevel, number>,
 );
 
-export function DebtsPage({ debts, negotiations, payments, onImportKnownDebts, onSave, onDelete }: DebtsPageProps) {
+export function DebtsPage({ debts, negotiations, payments, onImportKnownDebts, onSave, onDelete, onOpenDebt }: DebtsPageProps) {
   const [form, setForm] = useState<DebtInput>(emptyForm);
   const [error, setError] = useState("");
   const [importError, setImportError] = useState("");
@@ -340,7 +341,9 @@ export function DebtsPage({ debts, negotiations, payments, onImportKnownDebts, o
                             </div>
 
                             <div className="debt-line-name">
-                              <strong>{debt.creditorName}</strong>
+                              <button className="debt-name-button" type="button" onClick={() => onOpenDebt(debt.id)}>
+                                {debt.creditorName}
+                              </button>
                               <span className="debt-category">{categoryLabels[debt.category]}</span>
                               <span className="note-tooltip" data-tooltip={noteText} tabIndex={0}>
                                 <Info size={14} />

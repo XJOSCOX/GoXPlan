@@ -8,6 +8,7 @@ import type {
   AccountMovement,
   DashboardStats,
   Debt,
+  DebtSnapshot,
   FinancialAccount,
   Income,
   Negotiation,
@@ -21,6 +22,7 @@ type DashboardPageProps = {
   accountMovements: AccountMovement[];
   accounts: FinancialAccount[];
   debts: Debt[];
+  debtSnapshots: DebtSnapshot[];
   income: Income[];
   negotiations: Negotiation[];
   payoffMilestones: PayoffMilestone[];
@@ -38,6 +40,7 @@ export function DashboardPage({
   accountMovements,
   accounts,
   debts,
+  debtSnapshots,
   income,
   negotiations,
   payoffMilestones,
@@ -71,6 +74,7 @@ export function DashboardPage({
     () => buildPeriodTrendRows(payoffMilestones, payments, payoffSettings),
     [payments, payoffMilestones, payoffSettings.budgetFrequency, payoffSettings.monthlyBudgetCents],
   );
+  const balanceTrendRows = useMemo(() => buildBalanceTrendRows(debts, debtSnapshots), [debts, debtSnapshots]);
   const negotiationAlerts = buildNegotiationAlerts(negotiations, debts);
   const collectionCount = financialSummary.collectionDebtCount;
   const pastDueCount = financialSummary.pastDueDebtCount;
@@ -310,12 +314,39 @@ export function DashboardPage({
         <article className="panel monthly-payments-panel">
           <div className="finance-section-heading">
             <div>
-              <h2>Payoff period trend</h2>
+              <h2>{balanceTrendRows.length ? "Balance history" : "Payoff period trend"}</h2>
             </div>
-            <span>{formatBudgetFrequency(payoffSettings.budgetFrequency)}</span>
+            <span>{balanceTrendRows.length ? "Snapshots" : formatBudgetFrequency(payoffSettings.budgetFrequency)}</span>
           </div>
 
-          {periodTrendRows.length ? (
+          {balanceTrendRows.length ? (
+            <>
+              <div className="period-trend-chart" aria-label="Debt balance history chart">
+                {balanceTrendRows.map((row) => (
+                  <div className="period-trend-column" key={row.key} title={`${row.label}: ${formatCurrency(row.balanceCents)}`}>
+                    <div className="period-trend-bar-shell">
+                      <span className="period-trend-bar active" style={{ height: `${Math.max(8, row.percent)}%` }}>
+                        <em>{formatCompactCurrency(row.balanceCents)}</em>
+                      </span>
+                    </div>
+                    <strong>{row.label}</strong>
+                    <small>{row.count} point{row.count === 1 ? "" : "s"}</small>
+                  </div>
+                ))}
+              </div>
+              <div className="period-trend-summary">
+                <span>
+                  Latest <strong>{formatCurrency(balanceTrendRows[balanceTrendRows.length - 1]?.balanceCents ?? remainingBalance)}</strong>
+                </span>
+                <span>
+                  Points <strong>{debtSnapshots.length}</strong>
+                </span>
+                <span>
+                  Debts <strong>{stats.debts}</strong>
+                </span>
+              </div>
+            </>
+          ) : periodTrendRows.length ? (
             <>
               <div className="period-trend-chart" aria-label="Payoff period goal progress chart">
                 {periodTrendRows.map((row) => (
@@ -363,6 +394,45 @@ type PeriodTrendRow = {
   status: "ACTIVE" | "DONE" | "SHORT";
   targetCents: number;
 };
+
+type BalanceTrendRow = {
+  balanceCents: number;
+  count: number;
+  key: string;
+  label: string;
+  percent: number;
+};
+
+function buildBalanceTrendRows(debts: Debt[], snapshots: DebtSnapshot[]): BalanceTrendRow[] {
+  const usableSnapshots = snapshots
+    .filter((snapshot) => snapshot.debtId && debts.some((debt) => debt.id === snapshot.debtId))
+    .sort((left, right) => left.snapshotAt.localeCompare(right.snapshotAt) || left.createdAt.localeCompare(right.createdAt));
+  if (!usableSnapshots.length) return [];
+
+  const balancesByDebt = new Map(debts.map((debt) => [debt.id, debt.balanceCents]));
+  const rowsByDay = new Map<string, { balanceCents: number; count: number }>();
+
+  for (const snapshot of usableSnapshots) {
+    if (!snapshot.debtId) continue;
+    balancesByDebt.set(snapshot.debtId, Math.max(0, snapshot.balanceCents));
+    const key = snapshot.snapshotAt.slice(0, 10);
+    rowsByDay.set(key, {
+      balanceCents: [...balancesByDebt.values()].reduce((sum, cents) => sum + cents, 0),
+      count: (rowsByDay.get(key)?.count ?? 0) + 1,
+    });
+  }
+
+  const rows = [...rowsByDay.entries()].slice(-6);
+  const maxBalance = Math.max(...rows.map(([, row]) => row.balanceCents), 1);
+
+  return rows.map(([key, row]) => ({
+    balanceCents: row.balanceCents,
+    count: row.count,
+    key,
+    label: formatShortDate(key),
+    percent: Math.round((row.balanceCents / maxBalance) * 100),
+  }));
+}
 
 function buildPeriodTrendRows(milestones: PayoffMilestone[], payments: Payment[], settings: PayoffSettings): PeriodTrendRow[] {
   if (settings.monthlyBudgetCents <= 0) return [];
@@ -516,6 +586,10 @@ function isWithinDays(value: string, days: number) {
 
 function formatCurrency(cents: number) {
   return new Intl.NumberFormat("en-US", { currency: "USD", style: "currency" }).format(cents / 100);
+}
+
+function formatCompactCurrency(cents: number) {
+  return new Intl.NumberFormat("en-US", { compactDisplay: "short", currency: "USD", maximumFractionDigits: 1, notation: "compact", style: "currency" }).format(cents / 100);
 }
 
 function formatShortDate(value: string) {

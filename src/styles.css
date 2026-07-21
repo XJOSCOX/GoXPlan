@@ -2091,6 +2091,7 @@ button:focus-visible {
   font-size: clamp(24px, 2.6vw, 32px);
   font-weight: 650;
   line-height: 1;
+  overflow-wrap: anywhere;
 }
 
 .income-summary-strip {
@@ -3071,6 +3072,391 @@ button:focus-visible {
 .debt-line .icon-button {
   height: 32px;
   width: 32px;
+}
+
+.debt-name-button {
+  appearance: none;
+  background: transparent;
+  border: 0;
+  color: var(--text);
+  font: inherit;
+  font-size: 14px;
+  font-weight: 650;
+  line-height: 1.2;
+  max-width: 100%;
+  overflow: hidden;
+  padding: 0;
+  text-align: left;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.debt-name-button:hover,
+.debt-name-button:focus-visible {
+  color: var(--surface-strong);
+  text-decoration: underline;
+  text-underline-offset: 4px;
+}
+
+.debt-detail-page {
+  gap: 16px;
+}
+
+.debt-detail-hero {
+  border-left: 4px solid var(--level-low);
+  display: grid;
+  gap: 24px;
+  padding: clamp(18px, 2vw, 28px);
+}
+
+.debt-detail-hero.priority-emergency {
+  border-left-color: var(--level-emergency);
+}
+
+.debt-detail-hero.priority-critical {
+  border-left-color: var(--level-critical);
+}
+
+.debt-detail-hero.priority-high {
+  border-left-color: var(--level-high);
+}
+
+.debt-detail-hero.priority-medium {
+  border-left-color: var(--level-medium);
+}
+
+.debt-detail-hero.priority-low {
+  border-left-color: var(--level-low);
+}
+
+.debt-detail-return,
+.debt-detail-hero-grid,
+.debt-detail-next-row {
+  align-items: center;
+  display: flex;
+  gap: 12px;
+  justify-content: space-between;
+}
+
+.debt-detail-hero-grid {
+  align-items: end;
+}
+
+.debt-detail-title {
+  display: grid;
+  gap: 8px;
+  max-width: 820px;
+}
+
+.debt-detail-title > span,
+.detail-card-heading p,
+.debt-detail-target span,
+.debt-detail-metric span,
+.detail-data-grid span,
+.detail-note-box span,
+.detail-list-row span,
+.detail-list-row em,
+.debt-timeline-row time,
+.debt-timeline-row p,
+.debt-detail-mini span {
+  color: var(--muted);
+}
+
+.debt-detail-title h2 {
+  font-size: clamp(2.1rem, 4vw, 4.5rem);
+  letter-spacing: 0;
+  line-height: 0.96;
+  margin: 0;
+}
+
+.debt-detail-title p,
+.detail-note-box p,
+.debt-timeline-row p {
+  margin: 0;
+}
+
+.debt-detail-target {
+  align-content: end;
+  display: grid;
+  gap: 10px;
+  justify-items: end;
+  min-width: min(100%, 260px);
+}
+
+.debt-detail-target strong {
+  font-size: clamp(1.9rem, 3vw, 3rem);
+  line-height: 1;
+}
+
+.debt-detail-metrics {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+}
+
+.debt-detail-metric {
+  align-content: start;
+  display: grid;
+  gap: 8px;
+  min-height: 112px;
+  padding: 18px;
+}
+
+.debt-detail-metric svg {
+  color: var(--muted);
+}
+
+.debt-detail-metric strong {
+  font-size: clamp(1.35rem, 2vw, 2rem);
+  line-height: 1;
+  overflow-wrap: anywhere;
+}
+
+.debt-detail-grid {
+  display: grid;
+  gap: 14px;
+  grid-template-columns: minmax(0, 1.1fr) minmax(0, 0.95fr);
+}
+
+.debt-history-panel {
+  display: grid;
+  gap: 18px;
+  padding: 20px;
+}
+
+.debt-history-chart {
+  align-items: end;
+  background:
+    linear-gradient(var(--border) 1px, transparent 1px),
+    linear-gradient(90deg, var(--border) 1px, transparent 1px);
+  background-size: 100% 50%, 12.5% 100%;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(8, minmax(0, 1fr));
+  min-height: 190px;
+  padding: 18px 14px 12px;
+}
+
+.debt-history-column {
+  align-items: stretch;
+  display: grid;
+  gap: 6px;
+  grid-template-rows: 1fr auto auto;
+  min-width: 0;
+}
+
+.debt-history-bar-shell {
+  align-items: end;
+  display: flex;
+  min-height: 0;
+}
+
+.debt-history-bar-shell span {
+  background: color-mix(in srgb, var(--surface-strong) 78%, transparent);
+  border: 1px solid color-mix(in srgb, var(--surface-strong) 24%, var(--border));
+  border-radius: 8px 8px 3px 3px;
+  display: block;
+  min-height: 4px;
+  width: 100%;
+}
+
+.debt-history-column strong,
+.debt-history-column small {
+  overflow: hidden;
+  text-align: center;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.debt-history-column strong {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 620;
+}
+
+.debt-history-column small {
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 580;
+}
+
+.debt-history-summary {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.debt-history-summary span {
+  background: color-mix(in srgb, var(--surface-soft) 44%, transparent);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--muted);
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+  padding: 12px;
+}
+
+.debt-history-summary strong {
+  color: var(--text);
+  font-size: clamp(1.15rem, 1.8vw, 1.7rem);
+  font-weight: 580;
+  overflow-wrap: anywhere;
+}
+
+.debt-detail-card {
+  align-content: start;
+  display: grid;
+  gap: 18px;
+  padding: 20px;
+}
+
+.debt-detail-plan-card {
+  grid-row: span 2;
+}
+
+.detail-card-heading {
+  align-items: start;
+  display: flex;
+  gap: 12px;
+}
+
+.detail-card-heading h2 {
+  font-size: 1.18rem;
+  line-height: 1.1;
+  margin: 0;
+}
+
+.detail-card-heading p {
+  margin: 4px 0 0;
+}
+
+.detail-data-grid {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.detail-data-grid div,
+.detail-note-box,
+.detail-list-row {
+  background: color-mix(in srgb, var(--surface-soft) 52%, transparent);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+
+.detail-data-grid div {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+  padding: 14px;
+}
+
+.detail-data-grid strong,
+.detail-list-row strong,
+.debt-detail-mini strong {
+  overflow-wrap: anywhere;
+}
+
+.detail-note-box {
+  display: grid;
+  gap: 8px;
+  padding: 16px;
+}
+
+.detail-list,
+.debt-timeline {
+  display: grid;
+  gap: 8px;
+}
+
+.detail-list-row {
+  align-items: center;
+  display: grid;
+  gap: 12px;
+  grid-template-columns: minmax(0, 0.8fr) minmax(0, 1fr);
+  padding: 12px;
+}
+
+.detail-list-row div {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.detail-list-row em {
+  font-style: normal;
+}
+
+.detail-empty {
+  align-items: center;
+  border: 1px dashed var(--border);
+  border-radius: 8px;
+  color: var(--muted);
+  display: flex;
+  gap: 10px;
+  min-height: 88px;
+  padding: 18px;
+}
+
+.detail-wide-button {
+  justify-self: start;
+}
+
+.debt-timeline-row {
+  align-items: start;
+  display: grid;
+  gap: 12px;
+  grid-template-columns: 10px minmax(0, 1fr) auto;
+  padding: 4px 0;
+}
+
+.debt-timeline-row > span {
+  background: var(--surface-strong);
+  border-radius: 999px;
+  height: 8px;
+  margin-top: 8px;
+  width: 8px;
+}
+
+.debt-timeline-row div {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.debt-timeline-row em {
+  color: var(--muted);
+  font-size: 12px;
+  font-style: normal;
+}
+
+.debt-detail-next-row {
+  align-items: stretch;
+}
+
+.debt-detail-mini {
+  align-items: center;
+  display: flex;
+  flex: 1;
+  gap: 12px;
+  padding: 16px;
+}
+
+.debt-detail-mini div {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.debt-detail-empty {
+  align-content: center;
+  display: grid;
+  gap: 24px;
+  min-height: 360px;
+  padding: 28px;
 }
 
 .income-page {
@@ -4369,6 +4755,151 @@ button:focus-visible {
   font-size: clamp(22px, 2vw, 30px);
   font-weight: 620;
   line-height: 1;
+}
+
+.debt-history-report-panel {
+  box-shadow: none;
+}
+
+.debt-history-report-grid {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.debt-history-report-grid article {
+  background: var(--surface-soft);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+  padding: 13px;
+}
+
+.debt-history-report-grid span,
+.debt-history-report-grid em,
+.debt-history-report-list-head,
+.debt-history-report-row span,
+.debt-history-report-row em {
+  color: var(--muted);
+  font-size: 12px;
+  font-style: normal;
+  font-weight: 620;
+}
+
+.debt-history-report-grid strong {
+  color: var(--text);
+  font-size: clamp(18px, 1.5vw, 24px);
+  font-weight: 620;
+  line-height: 1.05;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.debt-history-report-body {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: minmax(0, 1.4fr) minmax(280px, 0.6fr);
+}
+
+.debt-history-report-chart {
+  align-items: end;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(8, minmax(0, 1fr));
+  min-height: 190px;
+  padding: 16px 14px 12px;
+}
+
+.debt-history-report-column {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+}
+
+.debt-history-report-column > div {
+  align-items: end;
+  display: grid;
+  gap: 5px;
+  grid-template-columns: repeat(2, minmax(7px, 1fr));
+  height: 132px;
+}
+
+.debt-history-report-column span {
+  border-radius: 8px 8px 3px 3px;
+  display: block;
+  min-height: 4px;
+}
+
+.debt-history-report-column span.balance {
+  background: color-mix(in srgb, var(--surface-strong) 74%, var(--surface));
+}
+
+.debt-history-report-column span.obligation {
+  background: color-mix(in srgb, var(--danger) 62%, var(--surface-strong));
+}
+
+.debt-history-report-column strong {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 650;
+  text-align: center;
+}
+
+.debt-history-report-list {
+  align-content: start;
+  display: grid;
+  gap: 8px;
+}
+
+.debt-history-report-list-head,
+.debt-history-report-row {
+  align-items: center;
+  display: flex;
+  gap: 12px;
+  justify-content: space-between;
+}
+
+.debt-history-report-list-head {
+  min-height: 28px;
+}
+
+.debt-history-report-row {
+  background: var(--surface-soft);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  min-height: 54px;
+  padding: 10px 12px;
+}
+
+.debt-history-report-row > div {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.debt-history-report-row > div:last-child {
+  justify-items: end;
+  text-align: right;
+}
+
+.debt-history-report-row strong {
+  color: var(--text);
+  font-size: 14px;
+  font-weight: 650;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.history-change-good {
+  color: var(--success) !important;
+}
+
+.history-change-bad {
+  color: var(--danger) !important;
 }
 
 .reports-main-grid {
@@ -6156,7 +6687,7 @@ button:focus-visible {
   border-radius: 8px;
   display: grid;
   gap: 8px;
-  grid-template-columns: 1.5fr repeat(6, minmax(92px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
   padding: 8px;
 }
 
@@ -6656,8 +7187,13 @@ button:focus-visible {
   .priority-exposure-grid,
   .payments-page .summary-strip,
   .account-grid,
+  .debt-history-report-grid,
   .reports-summary-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .debt-history-report-body {
+    grid-template-columns: 1fr;
   }
 
   .payoff-progress-panel {
@@ -6713,6 +7249,22 @@ button:focus-visible {
     position: static;
   }
 
+  .debt-detail-metrics {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .debt-detail-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .debt-history-chart {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+
+  .debt-detail-plan-card {
+    grid-row: auto;
+  }
+
   .payoff-payment-row,
   .payoff-order-row {
     grid-template-columns: 34px minmax(200px, 1fr) 130px 120px;
@@ -6752,10 +7304,12 @@ button:focus-visible {
   .form-grid.two,
   .stat-grid,
   .next-panel,
+  .summary-strip,
   .income-summary-strip,
   .payments-page .summary-strip,
   .topstep-payout-preview,
   .account-grid,
+  .debt-history-report-grid,
   .reports-summary-grid {
     grid-template-columns: 1fr;
   }
@@ -6764,6 +7318,36 @@ button:focus-visible {
   .account-primary-value {
     align-items: stretch;
     flex-direction: column;
+  }
+
+  .debt-detail-hero-grid,
+  .debt-detail-return,
+  .debt-detail-next-row {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .debt-detail-target {
+    justify-items: start;
+  }
+
+  .debt-detail-metrics,
+  .debt-history-summary,
+  .detail-data-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .debt-history-chart {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    min-height: 160px;
+  }
+
+  .debt-history-report-chart {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+
+  .detail-list-row {
+    grid-template-columns: 1fr;
   }
 
   .account-card-actions {
@@ -7004,6 +7588,17 @@ button:focus-visible {
 }
 
 @media (max-width: 620px) {
+  .app-frame {
+    grid-template-columns: 1fr;
+  }
+
+  .app-sidebar {
+    border-bottom: 1px solid var(--border);
+    border-right: 0;
+    min-height: auto;
+    position: static;
+  }
+
   .income-toolbar {
     align-items: stretch;
     flex-direction: column;
@@ -7021,6 +7616,21 @@ button:focus-visible {
   .debt-toolbar {
     align-items: stretch;
     flex-direction: column;
+  }
+
+  .debt-list-actions {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .debt-list-actions .compact,
+  .debt-sync-button,
+  .debt-add-button {
+    width: 100%;
+  }
+
+  .debt-controls {
+    grid-template-columns: 1fr;
   }
 
   .debt-line {

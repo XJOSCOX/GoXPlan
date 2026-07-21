@@ -19,6 +19,7 @@ import {
   listAccountMovements,
   listIncome,
   listDebts,
+  listDebtSnapshots,
   listNegotiations,
   listPayoffMilestones,
   listPayments,
@@ -44,6 +45,7 @@ import { AuthPage } from "./features/auth/AuthPage";
 import { AccountsPage } from "./features/accounts/AccountsPage";
 import { BackupPage } from "./features/backup/BackupPage";
 import { DashboardPage } from "./features/dashboard/DashboardPage";
+import { DebtDetailPage } from "./features/debts/DebtDetailPage";
 import { DebtsPage } from "./features/debts/DebtsPage";
 import { IncomePage } from "./features/income/IncomePage";
 import { NegotiationsPage } from "./features/negotiations/NegotiationsPage";
@@ -58,6 +60,7 @@ import type {
   DashboardStats,
   Debt,
   DebtInput,
+  DebtSnapshot,
   FinancialAccount,
   FinancialAccountInput,
   Income,
@@ -89,6 +92,7 @@ const emptyPayoffSettings: PayoffSettings = {
 const pagePaths: Record<AppPage, string> = {
   dashboard: "/dashboard",
   debts: "/debts",
+  debtDetail: "/debts",
   accounts: "/accounts",
   income: "/income",
   negotiations: "/negotiations",
@@ -136,6 +140,7 @@ export function App() {
   const [page, setPage] = useState<AppPage>(() => getPageFromPath() ?? "dashboard");
   const [stats, setStats] = useState(emptyStats);
   const [debts, setDebts] = useState<Debt[]>([]);
+  const [debtSnapshots, setDebtSnapshots] = useState<DebtSnapshot[]>([]);
   const [financialAccounts, setFinancialAccounts] = useState<FinancialAccount[]>([]);
   const [accountMovements, setAccountMovements] = useState<AccountMovement[]>([]);
   const [income, setIncome] = useState<Income[]>([]);
@@ -173,6 +178,7 @@ export function App() {
           setPage(routePage);
           setStats(getDashboardStats(database, sessionUser.id));
           setDebts(listDebts(database, sessionUser.id));
+          setDebtSnapshots(listDebtSnapshots(database, sessionUser.id));
           setFinancialAccounts(listFinancialAccounts(database, sessionUser.id));
           setAccountMovements(listAccountMovements(database, sessionUser.id));
           setIncome(listIncome(database, sessionUser.id));
@@ -226,6 +232,7 @@ export function App() {
     navigateToPage(getPageFromPath() ?? "dashboard", true);
     setStats(getDashboardStats(db, nextUser.id));
     setDebts(listDebts(db, nextUser.id));
+    setDebtSnapshots(listDebtSnapshots(db, nextUser.id));
     setFinancialAccounts(listFinancialAccounts(db, nextUser.id));
     setAccountMovements(listAccountMovements(db, nextUser.id));
     setIncome(listIncome(db, nextUser.id));
@@ -244,6 +251,7 @@ export function App() {
     navigateToPage(getPageFromPath() ?? "dashboard", true);
     setStats(getDashboardStats(db, nextUser.id));
     setDebts(listDebts(db, nextUser.id));
+    setDebtSnapshots(listDebtSnapshots(db, nextUser.id));
     setFinancialAccounts(listFinancialAccounts(db, nextUser.id));
     setAccountMovements(listAccountMovements(db, nextUser.id));
     setIncome(listIncome(db, nextUser.id));
@@ -269,6 +277,7 @@ export function App() {
     setPage("dashboard");
     setPayoffHasUnsavedChanges(false);
     setDebts([]);
+    setDebtSnapshots([]);
     setFinancialAccounts([]);
     setAccountMovements([]);
     setIncome([]);
@@ -301,6 +310,27 @@ export function App() {
     }
   }
 
+  function navigateToDebt(debtId: string, replace = false) {
+    const openDebt = () => {
+      setPage("debtDetail");
+      if (page === "payoff") setPayoffHasUnsavedChanges(false);
+      const nextPath = `/debts/${encodeURIComponent(debtId)}`;
+      if (replace) {
+        window.history.replaceState(null, "", nextPath);
+      } else {
+        window.history.pushState(null, "", nextPath);
+      }
+    };
+
+    if (shouldConfirmDiscardPayoffChanges("debtDetail")) {
+      openDiscardPayoffDialog(openDebt);
+      return false;
+    }
+
+    openDebt();
+    return true;
+  }
+
   function openPayments(payment?: PaymentInput) {
     const openPaymentPage = () => {
       setPaymentDraft(payment);
@@ -313,6 +343,10 @@ export function App() {
     }
 
     openPaymentPage();
+  }
+
+  function openPaymentDraft(payment: PaymentInput) {
+    openPayments(payment);
   }
 
   function openPaymentFromNegotiation(negotiation: Negotiation) {
@@ -337,6 +371,7 @@ export function App() {
     if (!db || !user) throw new Error("GoXPlan is still starting. Please try again.");
     await upsertDebt(db, user.id, input);
     setDebts(listDebts(db, user.id));
+    setDebtSnapshots(listDebtSnapshots(db, user.id));
     setStats(getDashboardStats(db, user.id));
   }
 
@@ -350,6 +385,7 @@ export function App() {
       onConfirm: async () => {
         await deleteDebt(db, user.id, debtId);
         setDebts(listDebts(db, user.id));
+        setDebtSnapshots(listDebtSnapshots(db, user.id));
         setStats(getDashboardStats(db, user.id));
       },
     });
@@ -361,6 +397,7 @@ export function App() {
     await syncKnownDebts(db, user.id);
 
     setDebts(listDebts(db, user.id));
+    setDebtSnapshots(listDebtSnapshots(db, user.id));
     setStats(getDashboardStats(db, user.id));
   }
 
@@ -482,6 +519,7 @@ export function App() {
       await syncPayoffMilestoneFromRecords(db, user.id, nextPayoffSettings, nextPayments, previousPayment.paidAt);
     }
     setDebts(listDebts(db, user.id));
+    setDebtSnapshots(listDebtSnapshots(db, user.id));
     setFinancialAccounts(listFinancialAccounts(db, user.id));
     setPayments(nextPayments);
     setPayoffMilestones(listPayoffMilestones(db, user.id));
@@ -496,6 +534,7 @@ export function App() {
     const nextPayoffSettings = getPayoffSettings(db, user.id);
     await syncPayoffMilestoneFromRecords(db, user.id, nextPayoffSettings, nextPayments, removedPayment?.paidAt);
     setDebts(listDebts(db, user.id));
+    setDebtSnapshots(listDebtSnapshots(db, user.id));
     setFinancialAccounts(listFinancialAccounts(db, user.id));
     setPayments(nextPayments);
     setPayoffMilestones(listPayoffMilestones(db, user.id));
@@ -539,6 +578,7 @@ export function App() {
   function refreshWorkspace(database: Database, userId: string) {
     setStats(getDashboardStats(database, userId));
     setDebts(listDebts(database, userId));
+    setDebtSnapshots(listDebtSnapshots(database, userId));
     setFinancialAccounts(listFinancialAccounts(database, userId));
     setAccountMovements(listAccountMovements(database, userId));
     setIncome(listIncome(database, userId));
@@ -612,6 +652,17 @@ export function App() {
           onImportKnownDebts={handleImportKnownDebts}
           onSave={handleSaveDebt}
           onDelete={handleDeleteDebt}
+          onOpenDebt={navigateToDebt}
+        />
+      ) : page === "debtDetail" ? (
+        <DebtDetailPage
+          debt={debts.find((debt) => debt.id === getDebtIdFromPath())}
+          debtSnapshots={debtSnapshots}
+          negotiations={negotiations}
+          payments={payments}
+          onBack={() => navigateToPage("debts")}
+          onOpenNegotiations={() => navigateToPage("negotiations")}
+          onRecordPayment={openPaymentDraft}
         />
       ) : page === "accounts" ? (
         <AccountsPage
@@ -656,6 +707,7 @@ export function App() {
           accountMovements={accountMovements}
           accounts={financialAccounts}
           debts={debts}
+          debtSnapshots={debtSnapshots}
           income={income}
           negotiations={negotiations}
           payments={payments}
@@ -686,6 +738,7 @@ export function App() {
             accounts: financialAccounts.length,
             accountMovements: accountMovements.length,
             debts: debts.length,
+            debtSnapshots: debtSnapshots.length,
             income: income.length,
             negotiations: negotiations.length,
             payments: payments.length,
@@ -693,6 +746,7 @@ export function App() {
             payoffSettings: payoffSettings.userId ? 1 : 0,
           }}
           debts={debts}
+          debtSnapshots={debtSnapshots}
           income={income}
           negotiations={negotiations}
           onExportBackup={handleExportBackup}
@@ -704,6 +758,7 @@ export function App() {
           accountMovements={accountMovements}
           accounts={financialAccounts}
           debts={debts}
+          debtSnapshots={debtSnapshots}
           income={income}
           negotiations={negotiations}
           payoffMilestones={payoffMilestones}
@@ -736,6 +791,7 @@ function getPageFromPath(): AppPage | undefined {
   const path = window.location.pathname.replace(/\/+$/, "") || "/";
   if (path === "/" || path === "/dashboard") return "dashboard";
   if (path === "/debts") return "debts";
+  if (path.startsWith("/debts/")) return "debtDetail";
   if (path === "/accounts") return "accounts";
   if (path === "/income") return "income";
   if (path === "/negotiations") return "negotiations";
@@ -744,6 +800,12 @@ function getPageFromPath(): AppPage | undefined {
   if (path === "/payoff") return "payoff";
   if (path === "/backup") return "backup";
   return undefined;
+}
+
+function getDebtIdFromPath() {
+  const path = window.location.pathname.replace(/\/+$/, "");
+  const match = /^\/debts\/(.+)$/.exec(path);
+  return match ? decodeURIComponent(match[1]) : "";
 }
 
 function replaceUrl(page: AppPage) {
