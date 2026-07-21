@@ -2924,8 +2924,8 @@ button:focus-visible {
 
 .account-grid {
   display: grid;
-  gap: 10px;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
 .account-card {
@@ -2933,9 +2933,16 @@ button:focus-visible {
   border: 1px solid var(--border);
   border-radius: 8px;
   display: grid;
+  gap: 12px;
+  min-height: 230px;
+  padding: 16px;
+}
+
+.account-card-head {
+  align-items: start;
+  display: flex;
   gap: 14px;
-  min-height: 180px;
-  padding: 14px;
+  justify-content: space-between;
 }
 
 .account-card-main {
@@ -2958,8 +2965,8 @@ button:focus-visible {
 
 .account-card-main strong {
   color: var(--text);
-  font-size: 15px;
-  font-weight: 650;
+  font-size: 16px;
+  font-weight: 620;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -2976,14 +2983,59 @@ button:focus-visible {
   margin: 0;
 }
 
+.account-primary-value {
+  align-items: start;
+  display: flex;
+  gap: 12px;
+  justify-content: space-between;
+}
+
+.account-primary-value > div {
+  display: grid;
+  gap: 3px;
+}
+
+.account-primary-value span {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 620;
+}
+
+.account-primary-value strong {
+  color: var(--text);
+  font-size: clamp(26px, 2.4vw, 36px);
+  font-weight: 600;
+  line-height: 1;
+  overflow-wrap: anywhere;
+}
+
+.account-type-pill {
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  color: var(--muted);
+  flex: 0 0 auto;
+  font-size: 11px;
+  font-weight: 720;
+  padding: 5px 8px;
+}
+
+.account-type-bank {
+  background: color-mix(in srgb, var(--surface-strong) 5%, transparent);
+}
+
+.account-type-trading {
+  background: color-mix(in srgb, var(--success) 10%, transparent);
+  border-color: color-mix(in srgb, var(--success) 32%, var(--border));
+}
+
 .account-rule-grid {
   display: grid;
   gap: 8px;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 
 .compact-account-rules {
-  grid-template-columns: 1fr;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
 .account-rule-grid div {
@@ -3004,7 +3056,32 @@ button:focus-visible {
 .account-rule-grid strong {
   color: var(--text);
   font-size: 14px;
-  font-weight: 650;
+  font-weight: 610;
+}
+
+.account-profit-strip {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+}
+
+.account-profit-strip > span {
+  align-items: center;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  color: var(--muted);
+  display: inline-flex;
+  font-size: 11px;
+  font-weight: 720;
+  gap: 7px;
+  min-height: 30px;
+  padding: 5px 9px;
+}
+
+.account-profit-strip strong {
+  color: var(--text);
+  font-weight: 610;
 }
 
 .account-card-actions {
@@ -3012,7 +3089,6 @@ button:focus-visible {
   display: flex;
   gap: 8px;
   justify-content: flex-end;
-  margin-top: auto;
 }
 
 .account-modal-panel {
@@ -5622,8 +5698,24 @@ button:focus-visible {
   .next-panel,
   .payments-page .summary-strip,
   .topstep-payout-preview,
+  .account-grid,
   .reports-summary-grid {
     grid-template-columns: 1fr;
+  }
+
+  .account-card-head,
+  .account-primary-value {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .account-card-actions {
+    justify-content: flex-start;
+  }
+
+  .account-rule-grid,
+  .compact-account-rules {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   .cashflow-chart {
@@ -5870,6 +5962,11 @@ button:focus-visible {
   .backup-card,
   .backup-import-panel {
     padding: 16px;
+  }
+
+  .account-rule-grid,
+  .compact-account-rules {
+    grid-template-columns: 1fr;
   }
 
   .backup-summary-grid {

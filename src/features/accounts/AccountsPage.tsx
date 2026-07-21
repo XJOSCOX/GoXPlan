@@ -1,4 +1,4 @@
-import { Building2, Edit3, Plus, Save, Trash2, X } from "lucide-react";
+import { Building2, ChartNoAxesColumnIncreasing, Edit3, Landmark, Plus, Save, Trash2, X } from "lucide-react";
 import { type FormEvent, useState } from "react";
 import type { FinancialAccount, FinancialAccountInput, FinancialAccountType } from "../../types";
 
@@ -32,6 +32,7 @@ export function AccountsPage({ accounts, onSave, onDelete }: AccountsPageProps) 
   const [error, setError] = useState("");
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
+  const accountTotals = summarizeAccounts(accounts);
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -98,11 +99,26 @@ export function AccountsPage({ accounts, onSave, onDelete }: AccountsPageProps) 
 
   return (
     <div className="page-stack accounts-page">
+      <section className="summary-strip account-summary-strip">
+        <article>
+          <span>Bank cash</span>
+          <strong>{formatCurrency(accountTotals.bankCashCents)}</strong>
+        </article>
+        <article>
+          <span>Trading profit</span>
+          <strong>{formatCurrency(accountTotals.tradingProfitCents)}</strong>
+        </article>
+        <article>
+          <span>Payout capacity</span>
+          <strong>{formatCurrency(accountTotals.tradingPayoutCapacityCents)}</strong>
+        </article>
+      </section>
+
       <section className="panel accounts-panel">
         <div className="income-toolbar">
           <div>
             <h2>Accounts</h2>
-            <p>{accounts.length ? "Places money can come from or move through." : "Add your first bank or trading account."}</p>
+            <p>{accounts.length ? "Bank cash and trading accounts that can fund the plan." : "Add your first bank or trading account."}</p>
           </div>
           <button className="primary-button compact account-add-button" type="button" onClick={openAddForm}>
             <Plus size={17} />
@@ -114,67 +130,89 @@ export function AccountsPage({ accounts, onSave, onDelete }: AccountsPageProps) 
           <div className="account-grid">
             {accounts.map((account) => (
               <article className="account-card" key={account.id}>
-                <div className="account-card-main">
-                  <Building2 size={18} />
-                  <div>
-                    <strong>{account.name}</strong>
-                    <span>
-                      {accountTypeLabels[account.accountType]}
-                      {account.institution ? ` - ${account.institution}` : ""}
-                    </span>
+                <div className="account-card-head">
+                  <div className="account-card-main">
+                    {getAccountIcon(account.accountType)}
+                    <div>
+                      <strong>{account.name}</strong>
+                      <span>
+                        {accountTypeLabels[account.accountType]}
+                        {account.institution ? ` - ${account.institution}` : ""}
+                      </span>
+                    </div>
+                  </div>
+                  <div className="account-card-actions">
+                    <button className="icon-button" type="button" onClick={() => editAccount(account)} aria-label={`Edit ${account.name}`}>
+                      <Edit3 size={15} />
+                    </button>
+                    <button className="icon-button bad-entry" type="button" onClick={() => void onDelete(account.id)} aria-label={`Delete ${account.name}`}>
+                      <Trash2 size={15} />
+                    </button>
                   </div>
                 </div>
 
-                {account.accountType === "TRADING" && (
-                  <div className="account-rule-grid">
-                    <div>
-                      <span>{account.copiedAccounts ? "Profit per account" : "Total profit"}</span>
-                      <strong>{formatCurrency(account.copiedAccounts ? account.availableBalanceCents : getTotalTradingProfit(account))}</strong>
-                    </div>
-                    {account.copiedAccounts && (
-                      <div>
-                        <span>Total profit</span>
-                        <strong>{formatCurrency(getTotalTradingProfit(account))}</strong>
-                      </div>
-                    )}
-                    <div>
-                      <span>Mode</span>
-                      <strong>{account.copiedAccounts ? "Copied" : "Separate"}</strong>
-                    </div>
-                    <div>
-                      <span>Accounts</span>
-                      <strong>{account.maxSubAccounts ?? 1}</strong>
-                    </div>
-                    <div>
-                      <span>Limit</span>
-                      <strong>{formatPercent(account.payoutLimitBasisPoints ?? 5000)}</strong>
-                    </div>
-                    <div>
-                      <span>Fee</span>
-                      <strong>{formatPercent(account.feeBasisPoints ?? 1000)}</strong>
-                    </div>
+                <div className="account-primary-value">
+                  <div>
+                    <span>{getPrimaryAccountLabel(account)}</span>
+                    <strong>{formatCurrency(getPrimaryAccountAmount(account))}</strong>
                   </div>
+                  <span className={`account-type-pill account-type-${account.accountType.toLowerCase()}`}>{accountTypeLabels[account.accountType]}</span>
+                </div>
+
+                {account.accountType === "TRADING" && (
+                  <>
+                    <div className="account-rule-grid">
+                      <div>
+                        <span>{account.copiedAccounts ? "Profit per account" : "Average account"}</span>
+                        <strong>{formatCurrency(getAverageTradingProfit(account))}</strong>
+                      </div>
+                      <div>
+                        <span>Payout capacity</span>
+                        <strong>{formatCurrency(getTradingPayoutCapacity(account))}</strong>
+                      </div>
+                      <div>
+                        <span>{account.copiedAccounts ? "Mode" : "Tracking"}</span>
+                        <strong>{account.copiedAccounts ? "Copied" : "Separate"}</strong>
+                      </div>
+                      <div>
+                        <span>Accounts</span>
+                        <strong>{getTradingAccountProfits(account).length}</strong>
+                      </div>
+                      <div>
+                        <span>Limit</span>
+                        <strong>{formatPercent(account.payoutLimitBasisPoints ?? 5000)}</strong>
+                      </div>
+                      <div>
+                        <span>Fee</span>
+                        <strong>{formatPercent(account.feeBasisPoints ?? 1000)}</strong>
+                      </div>
+                    </div>
+
+                    <div className="account-profit-strip" aria-label={`${account.name} trading profits`}>
+                      {getTradingAccountProfits(account).map((profitCents, index) => (
+                        <span key={`${account.id}:${index}`}>
+                          A{index + 1}
+                          <strong>{formatCurrency(profitCents)}</strong>
+                        </span>
+                      ))}
+                    </div>
+                  </>
                 )}
 
                 {account.accountType !== "TRADING" && (
                   <div className="account-rule-grid compact-account-rules">
                     <div>
-                      <span>Available</span>
+                      <span>Available cash</span>
                       <strong>{formatCurrency(account.availableBalanceCents)}</strong>
+                    </div>
+                    <div>
+                      <span>Use case</span>
+                      <strong>{account.accountType === "BANK" ? "Cash source" : "Other source"}</strong>
                     </div>
                   </div>
                 )}
 
                 {account.notes && <p>{account.notes}</p>}
-
-                <div className="account-card-actions">
-                  <button className="icon-button" type="button" onClick={() => editAccount(account)} aria-label={`Edit ${account.name}`}>
-                    <Edit3 size={15} />
-                  </button>
-                  <button className="icon-button bad-entry" type="button" onClick={() => void onDelete(account.id)} aria-label={`Delete ${account.name}`}>
-                    <Trash2 size={15} />
-                  </button>
-                </div>
               </article>
             ))}
           </div>
@@ -331,6 +369,60 @@ function getTotalTradingProfit(account: FinancialAccount) {
     return account.availableBalanceCents * Math.max(1, account.maxSubAccounts ?? 1);
   }
   return account.tradingAccountProfitsCents.reduce((sum, value) => sum + value, 0);
+}
+
+function getTradingAccountProfits(account: FinancialAccount) {
+  if (account.copiedAccounts) {
+    return Array.from({ length: Math.max(1, account.maxSubAccounts ?? 1) }, () => account.availableBalanceCents);
+  }
+
+  return account.tradingAccountProfitsCents.length ? account.tradingAccountProfitsCents : [0];
+}
+
+function getAverageTradingProfit(account: FinancialAccount) {
+  const profits = getTradingAccountProfits(account);
+  return Math.round(profits.reduce((sum, value) => sum + value, 0) / Math.max(1, profits.length));
+}
+
+function getTradingPayoutCapacity(account: FinancialAccount) {
+  return Math.round(getTotalTradingProfit(account) * ((account.payoutLimitBasisPoints ?? 5000) / 10000));
+}
+
+function getPrimaryAccountLabel(account: FinancialAccount) {
+  if (account.accountType === "TRADING") return "Total trading profit";
+  if (account.accountType === "BANK") return "Available cash";
+  return "Available value";
+}
+
+function getPrimaryAccountAmount(account: FinancialAccount) {
+  return account.accountType === "TRADING" ? getTotalTradingProfit(account) : account.availableBalanceCents;
+}
+
+function summarizeAccounts(accounts: FinancialAccount[]) {
+  return accounts.reduce(
+    (totals, account) => {
+      if (account.accountType === "TRADING") {
+        const tradingProfitCents = getTotalTradingProfit(account);
+        return {
+          ...totals,
+          tradingPayoutCapacityCents: totals.tradingPayoutCapacityCents + getTradingPayoutCapacity(account),
+          tradingProfitCents: totals.tradingProfitCents + tradingProfitCents,
+        };
+      }
+
+      return {
+        ...totals,
+        bankCashCents: totals.bankCashCents + account.availableBalanceCents,
+      };
+    },
+    { bankCashCents: 0, tradingPayoutCapacityCents: 0, tradingProfitCents: 0 },
+  );
+}
+
+function getAccountIcon(accountType: FinancialAccountType) {
+  if (accountType === "BANK") return <Landmark size={18} />;
+  if (accountType === "TRADING") return <ChartNoAxesColumnIncreasing size={18} />;
+  return <Building2 size={18} />;
 }
 
 function formatCurrency(cents: number) {
