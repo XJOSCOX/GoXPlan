@@ -596,6 +596,7 @@ export function App() {
         />
       ) : page === "reports" ? (
         <ReportsPage
+          accountMovements={accountMovements}
           accounts={financialAccounts}
           debts={debts}
           income={income}
@@ -619,6 +620,7 @@ export function App() {
         />
       ) : page === "backup" ? (
         <BackupPage
+          accountMovements={accountMovements}
           accounts={financialAccounts}
           counts={{
             accounts: financialAccounts.length,

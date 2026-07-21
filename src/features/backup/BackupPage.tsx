@@ -2,9 +2,10 @@ import { CheckCircle2, DatabaseBackup, Download, FileJson, FileSpreadsheet, Merg
 import { useState } from "react";
 import { ConfirmDialog } from "../../components/ConfirmDialog";
 import { getBackupPreview, type BackupImportMode, type BackupImportSummary, type BackupPreview, type GoXPlanBackup } from "../../db/localDatabase";
-import type { Debt, FinancialAccount, Income, Negotiation, Payment } from "../../types";
+import type { AccountMovement, Debt, FinancialAccount, Income, Negotiation, Payment } from "../../types";
 
 type BackupPageProps = {
+  accountMovements: AccountMovement[];
   accounts: FinancialAccount[];
   counts: {
     accounts: number;
@@ -22,7 +23,7 @@ type BackupPageProps = {
   payments: Payment[];
 };
 
-export function BackupPage({ accounts, counts, debts, income, negotiations, onExportBackup, onImportBackup, payments }: BackupPageProps) {
+export function BackupPage({ accountMovements, accounts, counts, debts, income, negotiations, onExportBackup, onImportBackup, payments }: BackupPageProps) {
   const [error, setError] = useState("");
   const [importMode, setImportMode] = useState<BackupImportMode>("MERGE");
   const [isExporting, setIsExporting] = useState(false);
@@ -87,7 +88,11 @@ export function BackupPage({ accounts, counts, debts, income, negotiations, onEx
   function exportFinancialReportCsv() {
     setError("");
     setSuccess("");
-    downloadText(`goxplan-financial-report-${fileDate()}.csv`, financialReportToCsv({ accounts, debts, income, negotiations, payments }), "text/csv;charset=utf-8");
+    downloadText(
+      `goxplan-financial-report-${fileDate()}.csv`,
+      financialReportToCsv({ accountMovements, accounts, debts, income, negotiations, payments }),
+      "text/csv;charset=utf-8",
+    );
     setSuccess("Financial report CSV exported.");
   }
 
@@ -526,7 +531,7 @@ function negotiationsToCsv(negotiations: Negotiation[]) {
   return rowsToCsv(headers, rows);
 }
 
-function financialReportToCsv(records: Pick<BackupPageProps, "accounts" | "debts" | "income" | "negotiations" | "payments">) {
+function financialReportToCsv(records: Pick<BackupPageProps, "accountMovements" | "accounts" | "debts" | "income" | "negotiations" | "payments">) {
   const totalDebt = records.debts.reduce((sum, debt) => sum + debt.balanceCents, 0);
   const currentObligations = records.debts.reduce((sum, debt) => sum + getDebtActionAmountCents(debt), 0);
   const totalIncome = records.income.reduce((sum, item) => sum + item.netAmountCents, 0);
@@ -534,6 +539,7 @@ function financialReportToCsv(records: Pick<BackupPageProps, "accounts" | "debts
     .filter((account) => account.accountType !== "TRADING")
     .reduce((sum, account) => sum + account.availableBalanceCents, 0);
   const totalPayments = records.payments.reduce((sum, payment) => sum + payment.amountCents, 0);
+  const movementSummary = summarizeMovements(records.accountMovements);
   const acceptedAgreements = records.negotiations.filter((negotiation) => negotiation.status === "ACCEPTED" && negotiation.finalAgreementCents !== null);
   const rows: CsvRow[] = [
     ["GoXPlan financial report", fileDate()],
@@ -544,6 +550,8 @@ function financialReportToCsv(records: Pick<BackupPageProps, "accounts" | "debts
     ["Net income recorded", centsToDecimal(totalIncome)],
     ["Available cash", centsToDecimal(availableCash)],
     ["Payments recorded", centsToDecimal(totalPayments)],
+    ["Transfer volume", centsToDecimal(movementSummary.transferVolumeCents)],
+    ["Balance adjustments net", centsToDecimal(movementSummary.adjustmentInCents - movementSummary.adjustmentOutCents)],
     ["Accepted agreements", acceptedAgreements.length],
     [],
     ["Debts by priority", "Amount", "Count"],
@@ -557,9 +565,38 @@ function financialReportToCsv(records: Pick<BackupPageProps, "accounts" | "debts
     [],
     ["Recent income", "Source", "Net", "Date"],
     ...records.income.slice(0, 10).map((item) => [item.sourceType, item.source, centsToDecimal(item.netAmountCents), item.receivedAt]),
+    [],
+    ["Recent account movements"],
+    ["Type", "From", "To", "Amount", "Date", "Notes"],
+    ...records.accountMovements
+      .slice(0, 10)
+      .map((movement) => [
+        movement.movementType,
+        movement.fromAccountName ?? "",
+        movement.toAccountName ?? "",
+        centsToDecimal(movement.amountCents),
+        movement.occurredAt,
+        movement.notes,
+      ]),
   ];
 
   return rows.map((row) => row.map(toCsvCell).join(",")).join("\n");
+}
+
+function summarizeMovements(movements: AccountMovement[]) {
+  return movements.reduce(
+    (summary, movement) => {
+      if (movement.fromAccountId && movement.toAccountId) {
+        summary.transferVolumeCents += movement.amountCents;
+      } else if (movement.toAccountId) {
+        summary.adjustmentInCents += movement.amountCents;
+      } else if (movement.fromAccountId) {
+        summary.adjustmentOutCents += movement.amountCents;
+      }
+      return summary;
+    },
+    { adjustmentInCents: 0, adjustmentOutCents: 0, transferVolumeCents: 0 },
+  );
 }
 
 function getLevel(score: number) {

@@ -4224,6 +4224,10 @@ button:focus-visible {
   grid-template-columns: minmax(0, 1.45fr) minmax(340px, 0.85fr);
 }
 
+.reports-cash-grid {
+  grid-template-columns: minmax(0, 1.25fr) minmax(320px, 0.75fr);
+}
+
 .report-panel {
   box-shadow: none;
   display: grid;
@@ -4370,6 +4374,75 @@ button:focus-visible {
   height: 100%;
 }
 
+.cash-statement-list,
+.cash-account-list {
+  display: grid;
+  gap: 8px;
+}
+
+.cash-statement-list > div,
+.cash-account-list > div {
+  align-items: center;
+  background: var(--surface-soft);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  display: flex;
+  gap: 12px;
+  justify-content: space-between;
+  min-height: 44px;
+  padding: 10px 12px;
+}
+
+.cash-statement-list span,
+.cash-account-list span,
+.cash-statement-note {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 620;
+}
+
+.cash-statement-list strong,
+.cash-account-list strong {
+  color: var(--text);
+  font-size: 16px;
+  font-weight: 620;
+  text-align: right;
+  white-space: nowrap;
+}
+
+.cash-statement-list .strong {
+  background: var(--surface);
+}
+
+.cash-statement-list .strong strong {
+  font-size: 20px;
+}
+
+.negative-money {
+  color: var(--danger) !important;
+}
+
+.cash-statement-note {
+  align-items: center;
+  background: var(--surface-soft);
+  border: 1px dashed var(--border);
+  border-radius: 8px;
+  display: flex;
+  gap: 9px;
+  padding: 11px 12px;
+}
+
+.cash-statement-note svg {
+  flex: 0 0 auto;
+}
+
+.cash-account-list > div span {
+  align-items: center;
+  display: inline-flex;
+  gap: 8px;
+  min-width: 0;
+}
+
 .priority-mini-list {
   display: grid;
   gap: 8px;
@@ -4496,6 +4569,10 @@ button:focus-visible {
 
 .activity-report-item.negotiation .activity-report-icon {
   color: var(--level-critical);
+}
+
+.activity-report-item.movement .activity-report-icon {
+  color: var(--muted);
 }
 
 .activity-report-item > div:last-child span {

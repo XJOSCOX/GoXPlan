@@ -1,9 +1,10 @@
-import { ArrowRight, Banknote, CalendarDays, CircleDollarSign, Handshake, ReceiptText, TrendingDown, WalletCards } from "lucide-react";
+import { ArrowLeftRight, Banknote, CalendarDays, CircleDollarSign, Handshake, Landmark, ReceiptText, TrendingDown, WalletCards } from "lucide-react";
 import { getDebtPriorityLevel } from "../../lib/debtPriority";
 import { buildNegotiationInsights, getPlanningTarget, type DebtNegotiationInsight } from "../../lib/negotiationTargets";
-import type { Debt, FinancialAccount, Income, Negotiation, Payment } from "../../types";
+import type { AccountMovement, Debt, FinancialAccount, Income, Negotiation, Payment } from "../../types";
 
 type ReportsPageProps = {
+  accountMovements: AccountMovement[];
   accounts: FinancialAccount[];
   debts: Debt[];
   income: Income[];
@@ -19,25 +20,35 @@ type ActivityItem = {
   id: string;
   label: string;
   meta: string;
-  tone: "income" | "negotiation" | "payment";
+  signedAmount?: boolean;
+  tone: "income" | "movement" | "negotiation" | "payment";
 };
 
-export function ReportsPage({ accounts, debts, income, negotiations, payments, onOpenIncome, onOpenPayments }: ReportsPageProps) {
+export function ReportsPage({ accountMovements, accounts, debts, income, negotiations, payments, onOpenIncome, onOpenPayments }: ReportsPageProps) {
   const paymentSummary = summarizePayments(payments);
   const negotiationInsights = buildNegotiationInsights(negotiations);
+  const movementSummary = summarizeAccountMovements(accountMovements);
+  const cashAccounts = accounts.filter((account) => account.accountType !== "TRADING");
   const totalPaid = [...paymentSummary.paidByDebt.values()].reduce((sum, amount) => sum + amount, 0);
   const fullRemainingBalance = debts.reduce((sum, debt) => sum + getRemainingCents(debt, paymentSummary), 0);
   const currentObligations = debts.reduce((sum, debt) => sum + getObligationCents(debt, paymentSummary, negotiationInsights.get(debt.id)), 0);
   const startingBalance = fullRemainingBalance + totalPaid;
   const paidPercent = startingBalance ? Math.round((totalPaid / startingBalance) * 100) : 0;
   const totalIncome = income.reduce((sum, item) => sum + item.netAmountCents, 0);
-  const availableCash = accounts.filter((account) => account.accountType !== "TRADING").reduce((sum, account) => sum + account.availableBalanceCents, 0);
+  const availableCash = cashAccounts.reduce((sum, account) => sum + account.availableBalanceCents, 0);
+  const netCashActivity = totalIncome + movementSummary.adjustmentInCents - totalPaid - movementSummary.adjustmentOutCents;
+  const estimatedStartingCash = availableCash - netCashActivity;
   const acceptedAgreements = buildAcceptedAgreements(negotiations, debts);
   const acceptedSavings = acceptedAgreements.reduce((sum, item) => sum + item.savingsCents, 0);
-  const monthlyRows = buildMonthlyRows(income, payments);
-  const maxMonthlyAmount = Math.max(...monthlyRows.flatMap((row) => [row.incomeCents, row.paymentCents]), 1);
-  const hasMonthlyActivity = monthlyRows.some((row) => row.incomeCents > 0 || row.paymentCents > 0);
-  const recentActivity = buildRecentActivity(income, payments, negotiations).slice(0, 8);
+  const monthlyRows = buildMonthlyRows(income, payments, accountMovements);
+  const maxMonthlyAmount = Math.max(
+    ...monthlyRows.flatMap((row) => [row.incomeCents + row.adjustmentInCents, row.paymentCents + row.adjustmentOutCents]),
+    1,
+  );
+  const hasMonthlyActivity = monthlyRows.some(
+    (row) => row.incomeCents > 0 || row.paymentCents > 0 || row.adjustmentInCents > 0 || row.adjustmentOutCents > 0 || row.transferCents > 0,
+  );
+  const recentActivity = buildRecentActivity(income, payments, negotiations, accountMovements).slice(0, 10);
   const priorityRows = buildPriorityRows(debts, paymentSummary, negotiationInsights);
 
   return (
@@ -45,8 +56,8 @@ export function ReportsPage({ accounts, debts, income, negotiations, payments, o
       <section className="reports-header-panel panel">
         <div>
           <span className="section-kicker">Financial snapshot</span>
-          <h2>{formatCurrency(currentObligations)}</h2>
-          <p>Current obligations that need action now.</p>
+          <h2>{formatCurrency(availableCash)}</h2>
+          <p>Available cash after recorded income, payments, transfers, and balance adjustments.</p>
         </div>
         <div className="reports-hero-actions">
           <button className="icon-text-button" type="button" onClick={onOpenIncome}>
@@ -62,22 +73,22 @@ export function ReportsPage({ accounts, debts, income, negotiations, payments, o
 
       <section className="reports-summary-grid">
         <article>
-          <WalletCards size={16} />
-          <span>Full debt balance</span>
-          <strong>{formatCurrency(fullRemainingBalance)}</strong>
-          <em>{debts.length} account{debts.length === 1 ? "" : "s"}</em>
-        </article>
-        <article>
-          <ReceiptText size={17} />
-          <span>Total paid</span>
-          <strong>{formatCurrency(totalPaid)}</strong>
-          <em>{paidPercent}% of tracked movement</em>
-        </article>
-        <article>
           <Banknote size={17} />
           <span>Available cash</span>
           <strong className={availableCash < 0 ? "warning-text" : ""}>{formatCurrency(availableCash)}</strong>
-          <em>{formatCurrency(totalIncome)} income recorded</em>
+          <em>{cashAccounts.length} cash account{cashAccounts.length === 1 ? "" : "s"}</em>
+        </article>
+        <article>
+          <WalletCards size={16} />
+          <span>Current obligations</span>
+          <strong>{formatCurrency(currentObligations)}</strong>
+          <em>{debts.length} debt{debts.length === 1 ? "" : "s"} tracked</em>
+        </article>
+        <article>
+          <ReceiptText size={17} />
+          <span>Payments recorded</span>
+          <strong>{formatCurrency(totalPaid)}</strong>
+          <em>{paidPercent}% of tracked debt movement</em>
         </article>
         <article>
           <TrendingDown size={17} />
@@ -87,52 +98,86 @@ export function ReportsPage({ accounts, debts, income, negotiations, payments, o
         </article>
       </section>
 
-      <section className="reports-main-grid">
+      <section className="reports-main-grid reports-cash-grid">
         <article className="panel report-panel report-chart-panel">
           <div className="report-panel-heading">
             <div>
               <h2>Cash flow</h2>
-              <p>Income and payments by month.</p>
+              <p>Deposits and debt payments by month. Transfers are tracked separately.</p>
             </div>
             <span>Last 6 months</span>
           </div>
 
           {hasMonthlyActivity ? (
             <>
-              <div className="cashflow-chart" aria-label="Monthly income and payments">
-                {monthlyRows.map((row) => (
-                  <div className="cashflow-month" key={row.key}>
-                    <div>
-                      <span
-                        className="cashflow-bar income"
-                        style={{ height: `${getBarHeight(row.incomeCents, maxMonthlyAmount)}%` }}
-                        title={`Income ${formatCurrency(row.incomeCents)}`}
-                      />
-                      <span
-                        className="cashflow-bar payment"
-                        style={{ height: `${getBarHeight(row.paymentCents, maxMonthlyAmount)}%` }}
-                        title={`Payments ${formatCurrency(row.paymentCents)}`}
-                      />
+              <div className="cashflow-chart" aria-label="Monthly deposits and debt payments">
+                {monthlyRows.map((row) => {
+                  const depositsCents = row.incomeCents + row.adjustmentInCents;
+                  const outflowCents = row.paymentCents + row.adjustmentOutCents;
+                  return (
+                    <div className="cashflow-month" key={row.key}>
+                      <div>
+                        <span
+                          className="cashflow-bar income"
+                          style={{ height: `${getBarHeight(depositsCents, maxMonthlyAmount)}%` }}
+                          title={`Deposits ${formatCurrency(depositsCents)}`}
+                        />
+                        <span
+                          className="cashflow-bar payment"
+                          style={{ height: `${getBarHeight(outflowCents, maxMonthlyAmount)}%` }}
+                          title={`Payments ${formatCurrency(outflowCents)}`}
+                        />
+                      </div>
+                      <strong>{row.label}</strong>
                     </div>
-                    <strong>{row.label}</strong>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
 
               <div className="cashflow-legend">
-                <span><i className="income" /> Income</span>
-                <span><i className="payment" /> Payments</span>
+                <span>
+                  <i className="income" /> Deposits
+                </span>
+                <span>
+                  <i className="payment" /> Payments
+                </span>
+                <span>{formatCurrency(movementSummary.transferVolumeCents)} transferred</span>
               </div>
             </>
           ) : (
             <div className="report-empty-state cashflow-empty-state">
               <Banknote size={18} />
               <strong>No cash flow yet.</strong>
-              <span>Add income or record a payment to create this chart.</span>
+              <span>Add income, move cash, or record a payment to create this chart.</span>
             </div>
           )}
         </article>
 
+        <article className="panel report-panel">
+          <div className="report-panel-heading">
+            <div>
+              <h2>Cash statement</h2>
+              <p>How recorded activity connects to available cash.</p>
+            </div>
+            <span>{income.length + payments.length + accountMovements.length} records</span>
+          </div>
+
+          <div className="cash-statement-list">
+            <ReportMoneyRow label="Starting cash estimate" value={estimatedStartingCash} />
+            <ReportMoneyRow label="Income deposited" value={totalIncome} />
+            <ReportMoneyRow label="Debt payments" tone="negative" value={-totalPaid} />
+            <ReportMoneyRow label="Balance adjustments" value={movementSummary.adjustmentInCents - movementSummary.adjustmentOutCents} signed />
+            <ReportMoneyRow label="Current cash" value={availableCash} strong />
+          </div>
+
+          <div className="cash-statement-note">
+            <ArrowLeftRight size={15} />
+            <span>{formatCurrency(movementSummary.transferVolumeCents)} moved between accounts without changing total cash.</span>
+          </div>
+        </article>
+      </section>
+
+      <section className="reports-main-grid">
         <article className="panel report-panel">
           <div className="report-panel-heading">
             <div>
@@ -169,6 +214,40 @@ export function ReportsPage({ accounts, debts, income, negotiations, payments, o
               </div>
             ))}
           </div>
+        </article>
+
+        <article className="panel report-panel">
+          <div className="report-panel-heading">
+            <div>
+              <h2>Cash accounts</h2>
+              <p>Where accessible money is sitting right now.</p>
+            </div>
+            <span>{cashAccounts.length}</span>
+          </div>
+
+          {cashAccounts.length ? (
+            <div className="cash-account-list">
+              {cashAccounts
+                .slice()
+                .sort((left, right) => right.availableBalanceCents - left.availableBalanceCents || left.name.localeCompare(right.name))
+                .slice(0, 5)
+                .map((account) => (
+                  <div key={account.id}>
+                    <span>
+                      <Landmark size={15} />
+                      {account.name}
+                    </span>
+                    <strong>{formatCurrency(account.availableBalanceCents)}</strong>
+                  </div>
+                ))}
+            </div>
+          ) : (
+            <div className="report-empty-state">
+              <Landmark size={18} />
+              <strong>No cash accounts yet.</strong>
+              <span>Add a bank or cash account to show balances here.</span>
+            </div>
+          )}
         </article>
       </section>
 
@@ -219,15 +298,13 @@ export function ReportsPage({ accounts, debts, income, negotiations, payments, o
             <div className="activity-report-list">
               {recentActivity.map((activity) => (
                 <div className={`activity-report-item ${activity.tone}`} key={activity.id}>
-                  <span className="activity-report-icon">
-                    {activity.tone === "income" ? <CircleDollarSign size={15} /> : activity.tone === "payment" ? <ReceiptText size={15} /> : <Handshake size={15} />}
-                  </span>
+                  <span className="activity-report-icon">{getActivityIcon(activity.tone)}</span>
                   <div>
                     <strong>{activity.label}</strong>
                     <span>{activity.meta}</span>
                   </div>
                   <div>
-                    <strong>{formatCurrency(activity.amountCents)}</strong>
+                    <strong>{activity.signedAmount ? formatSignedCurrency(activity.amountCents) : formatCurrency(activity.amountCents)}</strong>
                     <span>
                       <CalendarDays size={14} />
                       {formatDate(activity.date)}
@@ -245,6 +322,15 @@ export function ReportsPage({ accounts, debts, income, negotiations, payments, o
           )}
         </article>
       </section>
+    </div>
+  );
+}
+
+function ReportMoneyRow({ label, signed = false, strong = false, tone, value }: { label: string; signed?: boolean; strong?: boolean; tone?: "negative"; value: number }) {
+  return (
+    <div className={strong ? "strong" : ""}>
+      <span>{label}</span>
+      <strong className={tone === "negative" || value < 0 ? "negative-money" : ""}>{signed ? formatSignedCurrency(value) : formatCurrency(value)}</strong>
     </div>
   );
 }
@@ -267,6 +353,22 @@ function summarizePayments(payments: Payment[]) {
   }
 
   return { paidByDebt, resultingBalanceByDebt };
+}
+
+function summarizeAccountMovements(movements: AccountMovement[]) {
+  return movements.reduce(
+    (summary, movement) => {
+      if (movement.fromAccountId && movement.toAccountId) {
+        summary.transferVolumeCents += movement.amountCents;
+      } else if (movement.toAccountId) {
+        summary.adjustmentInCents += movement.amountCents;
+      } else if (movement.fromAccountId) {
+        summary.adjustmentOutCents += movement.amountCents;
+      }
+      return summary;
+    },
+    { adjustmentInCents: 0, adjustmentOutCents: 0, transferVolumeCents: 0 },
+  );
 }
 
 function getRemainingCents(debt: Debt, summary: ReturnType<typeof summarizePayments>) {
@@ -316,17 +418,20 @@ function buildPriorityRows(debts: Debt[], summary: ReturnType<typeof summarizePa
     .filter((row): row is { amountCents: number; count: number; level: string } => Boolean(row && row.count > 0));
 }
 
-function buildMonthlyRows(income: Income[], payments: Payment[]) {
-  const latestDate = getLatestDate([...income.map((item) => item.receivedAt), ...payments.map((item) => item.paidAt)]);
+function buildMonthlyRows(income: Income[], payments: Payment[], movements: AccountMovement[]) {
+  const latestDate = getLatestDate([...income.map((item) => item.receivedAt), ...payments.map((item) => item.paidAt), ...movements.map((item) => item.occurredAt)]);
   const rows = [];
 
   for (let offset = 5; offset >= 0; offset -= 1) {
     const date = new Date(latestDate.getFullYear(), latestDate.getMonth() - offset, 1);
     rows.push({
+      adjustmentInCents: 0,
+      adjustmentOutCents: 0,
       incomeCents: 0,
       key: getMonthKey(date),
       label: new Intl.DateTimeFormat("en-US", { month: "short" }).format(date),
       paymentCents: 0,
+      transferCents: 0,
     });
   }
 
@@ -339,18 +444,25 @@ function buildMonthlyRows(income: Income[], payments: Payment[]) {
     const row = byMonth.get(getMonthKey(new Date(payment.paidAt)));
     if (row) row.paymentCents += payment.amountCents;
   }
+  for (const movement of movements) {
+    const row = byMonth.get(getMonthKey(new Date(movement.occurredAt)));
+    if (!row) continue;
+    if (movement.fromAccountId && movement.toAccountId) row.transferCents += movement.amountCents;
+    else if (movement.toAccountId) row.adjustmentInCents += movement.amountCents;
+    else if (movement.fromAccountId) row.adjustmentOutCents += movement.amountCents;
+  }
 
   return rows;
 }
 
-function buildRecentActivity(income: Income[], payments: Payment[], negotiations: Negotiation[]): ActivityItem[] {
+function buildRecentActivity(income: Income[], payments: Payment[], negotiations: Negotiation[], movements: AccountMovement[]): ActivityItem[] {
   const activity: ActivityItem[] = [
     ...income.map((item) => ({
       amountCents: item.netAmountCents,
       date: item.receivedAt,
       id: `income:${item.id}`,
       label: item.source,
-      meta: "Income",
+      meta: item.destinationAccountName ? `Income to ${item.destinationAccountName}` : "Income",
       tone: "income" as const,
     })),
     ...payments.map((payment) => ({
@@ -358,8 +470,17 @@ function buildRecentActivity(income: Income[], payments: Payment[], negotiations
       date: payment.paidAt,
       id: `payment:${payment.id}`,
       label: payment.debtName ?? "Removed debt",
-      meta: "Payment",
+      meta: payment.accountName ? `Payment from ${payment.accountName}` : "Payment",
       tone: "payment" as const,
+    })),
+    ...movements.map((movement) => ({
+      amountCents: getActivityMovementAmount(movement),
+      date: movement.occurredAt,
+      id: `movement:${movement.id}`,
+      label: getMovementLabel(movement),
+      meta: getMovementMeta(movement),
+      signedAmount: !(movement.fromAccountId && movement.toAccountId),
+      tone: "movement" as const,
     })),
     ...negotiations.map((negotiation) => ({
       amountCents: negotiation.finalAgreementCents ?? negotiation.counterOfferCents ?? negotiation.userOfferCents ?? negotiation.currentOfferCents ?? 0,
@@ -372,6 +493,30 @@ function buildRecentActivity(income: Income[], payments: Payment[], negotiations
   ];
 
   return activity.sort((left, right) => new Date(right.date).getTime() - new Date(left.date).getTime());
+}
+
+function getActivityMovementAmount(movement: AccountMovement) {
+  if (movement.fromAccountId && !movement.toAccountId) return -movement.amountCents;
+  return movement.amountCents;
+}
+
+function getMovementLabel(movement: AccountMovement) {
+  if (movement.fromAccountName && movement.toAccountName) return `${movement.fromAccountName} to ${movement.toAccountName}`;
+  return movement.toAccountName ?? movement.fromAccountName ?? "Account movement";
+}
+
+function getMovementMeta(movement: AccountMovement) {
+  if (movement.fromAccountId && movement.toAccountId) return "Transfer";
+  if (movement.toAccountId) return "Balance increase";
+  if (movement.fromAccountId) return "Balance decrease";
+  return "Account movement";
+}
+
+function getActivityIcon(tone: ActivityItem["tone"]) {
+  if (tone === "income") return <CircleDollarSign size={15} />;
+  if (tone === "payment") return <ReceiptText size={15} />;
+  if (tone === "movement") return <ArrowLeftRight size={15} />;
+  return <Handshake size={15} />;
 }
 
 function getLatestDate(values: string[]) {
@@ -407,4 +552,9 @@ function formatDate(value: string) {
 
 function formatCurrency(cents: number) {
   return new Intl.NumberFormat("en-US", { currency: "USD", style: "currency" }).format(cents / 100);
+}
+
+function formatSignedCurrency(cents: number) {
+  const prefix = cents > 0 ? "+" : cents < 0 ? "-" : "";
+  return `${prefix}${formatCurrency(Math.abs(cents))}`;
 }
