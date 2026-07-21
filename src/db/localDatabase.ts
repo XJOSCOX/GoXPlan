@@ -2719,8 +2719,16 @@ function ensurePayoffSettingsColumns(db: Database) {
 }
 
 async function getSql() {
-  sqlPromise ??= initSqlJs({ locateFile: () => wasmUrl });
+  sqlPromise ??= initSqlJs({ locateFile: () => getSqlWasmLocation() });
   return sqlPromise;
+}
+
+function getSqlWasmLocation() {
+  if (import.meta.env.MODE === "test" && wasmUrl.startsWith("/node_modules/")) {
+    return wasmUrl.slice(1);
+  }
+
+  return wasmUrl;
 }
 
 async function openStore(mode: IDBTransactionMode) {

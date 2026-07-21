@@ -290,7 +290,10 @@ export function App() {
   }
 
   function navigateToPage(nextPage: AppPage, replace = false, skipPayoffConfirm = false) {
-    if (page === nextPage) return true;
+    if (page === nextPage) {
+      if (replace) replaceUrl(nextPage);
+      return true;
+    }
     if (!skipPayoffConfirm && shouldConfirmDiscardPayoffChanges(nextPage)) {
       openDiscardPayoffDialog(() => performNavigation(nextPage, replace));
       return false;

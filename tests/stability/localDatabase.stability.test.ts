@@ -125,6 +125,94 @@ describe("local database stability", () => {
     expect(getAccount(bank.id).availableBalanceCents).toBe(10000);
   });
 
+  test("moves edited income deposits between destination accounts without leaving stale cash", async () => {
+    const checking = await upsertFinancialAccount(db, userId, bankAccountInput({ availableBalance: "100", name: "Checking" }));
+    const savings = await upsertFinancialAccount(db, userId, bankAccountInput({ availableBalance: "50", name: "Savings" }));
+
+    const income = await upsertIncome(
+      db,
+      userId,
+      tradingIncomeInput({
+        accountId: "",
+        destinationAccountId: checking.id,
+        fees: "25",
+        grossAmount: "500",
+        sourceType: "OTHER",
+      }),
+    );
+
+    expect(getAccount(checking.id).availableBalanceCents).toBe(57500);
+    expect(getAccount(savings.id).availableBalanceCents).toBe(5000);
+
+    await upsertIncome(
+      db,
+      userId,
+      tradingIncomeInput({
+        id: income.id,
+        accountId: "",
+        destinationAccountId: savings.id,
+        fees: "10",
+        grossAmount: "300",
+        sourceType: "OTHER",
+      }),
+    );
+
+    expect(getAccount(checking.id).availableBalanceCents).toBe(10000);
+    expect(getAccount(savings.id).availableBalanceCents).toBe(34000);
+
+    await deleteIncome(db, userId, income.id);
+
+    expect(getAccount(checking.id).availableBalanceCents).toBe(10000);
+    expect(getAccount(savings.id).availableBalanceCents).toBe(5000);
+  });
+
+  test("restores the original trading source when edited income switches source accounts", async () => {
+    const firstTrading = await upsertFinancialAccount(
+      db,
+      userId,
+      tradingAccountInput({ availableBalance: "2000", name: "First trading" }),
+    );
+    const secondTrading = await upsertFinancialAccount(
+      db,
+      userId,
+      tradingAccountInput({ availableBalance: "1500", name: "Second trading" }),
+    );
+
+    const income = await upsertIncome(
+      db,
+      userId,
+      tradingIncomeInput({
+        accountId: firstTrading.id,
+        grossAmount: "400",
+        topstepAccountCount: "4",
+        topstepProfitPerAccount: "2000",
+      }),
+    );
+
+    expect(getAccount(firstTrading.id).tradingAccountProfitsCents).toEqual([160000, 160000, 160000, 160000]);
+    expect(getAccount(secondTrading.id).tradingAccountProfitsCents).toEqual([150000, 150000, 150000, 150000]);
+
+    await upsertIncome(
+      db,
+      userId,
+      tradingIncomeInput({
+        id: income.id,
+        accountId: secondTrading.id,
+        grossAmount: "300",
+        topstepAccountCount: "4",
+        topstepProfitPerAccount: "1500",
+      }),
+    );
+
+    expect(getAccount(firstTrading.id).tradingAccountProfitsCents).toEqual([200000, 200000, 200000, 200000]);
+    expect(getAccount(secondTrading.id).tradingAccountProfitsCents).toEqual([120000, 120000, 120000, 120000]);
+
+    await deleteIncome(db, userId, income.id);
+
+    expect(getAccount(firstTrading.id).tradingAccountProfitsCents).toEqual([200000, 200000, 200000, 200000]);
+    expect(getAccount(secondTrading.id).tradingAccountProfitsCents).toEqual([150000, 150000, 150000, 150000]);
+  });
+
   test("restores debt balance and status when a payment is edited and deleted", async () => {
     const debt = await upsertDebt(db, userId, debtInput({ balance: "1000", status: "COLLECTION" }));
 
@@ -173,6 +261,24 @@ describe("local database stability", () => {
 
     await deletePayment(db, userId, payment.id);
     expect(getAccount(bank.id).availableBalanceCents).toBe(100000);
+  });
+
+  test("moves edited payments between paid-from accounts without double charging cash", async () => {
+    const checking = await upsertFinancialAccount(db, userId, bankAccountInput({ availableBalance: "1000", name: "Checking" }));
+    const savings = await upsertFinancialAccount(db, userId, bankAccountInput({ availableBalance: "500", name: "Savings" }));
+    const debt = await upsertDebt(db, userId, debtInput({ balance: "1000", status: "COLLECTION" }));
+
+    const payment = await upsertPayment(db, userId, paymentInput({ accountId: checking.id, amount: "250", debtId: debt.id }));
+    expect(getAccount(checking.id).availableBalanceCents).toBe(75000);
+    expect(getAccount(savings.id).availableBalanceCents).toBe(50000);
+
+    await upsertPayment(db, userId, paymentInput({ id: payment.id, accountId: savings.id, amount: "125", debtId: debt.id }));
+    expect(getAccount(checking.id).availableBalanceCents).toBe(100000);
+    expect(getAccount(savings.id).availableBalanceCents).toBe(37500);
+
+    await deletePayment(db, userId, payment.id);
+    expect(getAccount(checking.id).availableBalanceCents).toBe(100000);
+    expect(getAccount(savings.id).availableBalanceCents).toBe(50000);
   });
 
   test("rejects debt payments from trading accounts", async () => {
