@@ -21,7 +21,7 @@ export function DashboardPage({ debts, negotiations, payments, user, stats, onOp
   const [emergencyPage, setEmergencyPage] = useState(1);
   const paymentSummary = summarizePayments(payments);
   const negotiationInsights = buildNegotiationInsights(negotiations);
-  const totalPaid = [...paymentSummary.paidByDebt.values()].reduce((sum, amount) => sum + amount, 0);
+  const totalPaid = paymentSummary.totalPrincipalCents;
   const remainingBalance = debts.reduce((sum, debt) => sum + getRemainingCents(debt, paymentSummary), 0);
   const obligationAmount = debts.reduce((sum, debt) => sum + getObligationCents(debt, paymentSummary, negotiationInsights.get(debt.id)), 0);
   const potentialSavings = debts.reduce((sum, debt) => sum + getSettlementSavingsCents(debt, negotiationInsights.get(debt.id)), 0);
@@ -30,7 +30,7 @@ export function DashboardPage({ debts, negotiations, payments, user, stats, onOp
   const paidPercent = obligationProgressBase ? Math.min(100, Math.round((totalPaid / obligationProgressBase) * 100)) : 0;
   const topDebt = getTopDebt(debts);
   const monthlyPaymentRows = buildMonthlyPaymentRows(payments);
-  const maxMonthlyPayment = Math.max(...monthlyPaymentRows.map((row) => row.amount), 1);
+  const maxMonthlyPayment = Math.max(...monthlyPaymentRows.map((row) => row.total), 1);
   const negotiationAlerts = buildNegotiationAlerts(negotiations, debts);
   const collectionCount = debts.filter((debt) => debt.status === "COLLECTION").length;
   const pastDueCount = debts.filter((debt) => debt.status === "PAST_DUE").length;
@@ -209,8 +209,12 @@ export function DashboardPage({ debts, negotiations, payments, user, stats, onOp
 
             <div className="payoff-progress-details">
               <div>
-                <span>Paid</span>
+                <span>Principal paid</span>
                 <strong>{formatCurrency(totalPaid)}</strong>
+              </div>
+              <div>
+                <span>Fees recorded</span>
+                <strong>{formatCurrency(paymentSummary.totalFeesCents)}</strong>
               </div>
               <div>
                 <span>Current obligations</span>
@@ -263,7 +267,7 @@ export function DashboardPage({ debts, negotiations, payments, user, stats, onOp
           </button>
         </article>
 
-        <article className="panel projection-placeholder-panel">
+        <article className="panel monthly-payments-panel">
           <div className="finance-section-heading">
             <div>
               <h2>Monthly payments</h2>
@@ -274,16 +278,32 @@ export function DashboardPage({ debts, negotiations, payments, user, stats, onOp
           <div className="monthly-payment-chart" aria-label="Monthly payment history chart">
             {monthlyPaymentRows.map((row) => (
               <div className="monthly-payment-column" key={row.key}>
-                <span className="monthly-payment-bar" style={{ height: `${row.amount ? Math.max(8, (row.amount / maxMonthlyPayment) * 100) : 3}%` }}>
-                  {row.amount > 0 && <em>{formatCompactCurrency(row.amount)}</em>}
+                <span className="monthly-payment-bar" style={{ height: `${row.total ? Math.max(8, (row.total / maxMonthlyPayment) * 100) : 3}%` }}>
+                  {row.total > 0 && <em>{formatCompactCurrency(row.total)}</em>}
+                  {row.total > 0 && (
+                    <>
+                      <i
+                        className="monthly-payment-principal"
+                        style={{ height: `${Math.max(8, Math.round((row.principal / row.total) * 100))}%` }}
+                      />
+                      {row.fees > 0 && (
+                        <i
+                          className="monthly-payment-fees"
+                          style={{ height: `${Math.max(6, Math.round((row.fees / row.total) * 100))}%` }}
+                        />
+                      )}
+                    </>
+                  )}
                 </span>
                 <strong>{row.label}</strong>
               </div>
             ))}
           </div>
-          <p className="placeholder-note">
-            {payments.length ? "Payments recorded by month." : "Record payments to activate the monthly chart."}
-          </p>
+          <div className="monthly-payment-summary">
+            <span>{formatCurrency(paymentSummary.totalAmountCents)} total paid</span>
+            <span>{formatCurrency(totalPaid)} principal</span>
+            <span>{formatCurrency(paymentSummary.totalFeesCents)} fees</span>
+          </div>
         </article>
       </section>
     </div>
@@ -291,9 +311,11 @@ export function DashboardPage({ debts, negotiations, payments, user, stats, onOp
 }
 
 type MonthlyPaymentRow = {
-  amount: number;
+  fees: number;
   key: string;
   label: string;
+  principal: number;
+  total: number;
 };
 
 type NegotiationAlert = {
@@ -309,8 +331,14 @@ type NegotiationAlert = {
 function summarizePayments(payments: Payment[]) {
   const paidByDebt = new Map<string, number>();
   const resultingBalanceByDebt = new Map<string, { paidAt: string; amount: number }>();
+  let totalAmountCents = 0;
+  let totalFeesCents = 0;
+  let totalPrincipalCents = 0;
 
   for (const payment of payments) {
+    totalAmountCents += payment.amountCents;
+    totalFeesCents += payment.interestAndFeesCents ?? 0;
+    totalPrincipalCents += payment.principalCents ?? payment.amountCents;
     if (!payment.debtId) continue;
     const paidAmount = payment.principalCents ?? payment.amountCents;
     paidByDebt.set(payment.debtId, (paidByDebt.get(payment.debtId) ?? 0) + paidAmount);
@@ -323,7 +351,7 @@ function summarizePayments(payments: Payment[]) {
     }
   }
 
-  return { paidByDebt, resultingBalanceByDebt };
+  return { paidByDebt, resultingBalanceByDebt, totalAmountCents, totalFeesCents, totalPrincipalCents };
 }
 
 function getTopDebt(debts: Debt[]) {
@@ -366,21 +394,25 @@ function buildMonthlyPaymentRows(payments: Payment[]): MonthlyPaymentRow[] {
   for (let offset = 5; offset >= 0; offset -= 1) {
     const date = new Date(latestDate.getFullYear(), latestDate.getMonth() - offset, 1);
     rows.push({
-      amount: 0,
+      fees: 0,
       key: getMonthKey(date),
       label: new Intl.DateTimeFormat("en-US", { month: "short" }).format(date),
+      principal: 0,
+      total: 0,
     });
   }
 
-  const amounts = new Map(rows.map((row) => [row.key, 0]));
+  const amounts = new Map(rows.map((row) => [row.key, { fees: 0, principal: 0, total: 0 }]));
   for (const payment of payments) {
     const key = getMonthKey(new Date(payment.paidAt));
-    if (amounts.has(key)) {
-      amounts.set(key, (amounts.get(key) ?? 0) + payment.amountCents);
-    }
+    const row = amounts.get(key);
+    if (!row) continue;
+    row.total += payment.amountCents;
+    row.principal += payment.principalCents ?? payment.amountCents;
+    row.fees += payment.interestAndFeesCents ?? 0;
   }
 
-  return rows.map((row) => ({ ...row, amount: amounts.get(row.key) ?? 0 }));
+  return rows.map((row) => ({ ...row, ...(amounts.get(row.key) ?? { fees: 0, principal: 0, total: 0 }) }));
 }
 
 function buildNegotiationAlerts(negotiations: Negotiation[], debts: Debt[]): NegotiationAlert[] {

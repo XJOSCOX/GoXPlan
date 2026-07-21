@@ -1271,7 +1271,7 @@ button:focus-visible {
 .finance-simple-metrics article,
 .payoff-progress-panel,
 .negotiation-watch-panel,
-.projection-placeholder-panel,
+.monthly-payments-panel,
 .finance-priority-card {
   background: var(--surface);
   border: 1px solid var(--border);
@@ -1316,8 +1316,7 @@ button:focus-visible {
 }
 
 .finance-balance-panel p,
-.finance-next-panel p,
-.placeholder-note {
+.finance-next-panel p {
   color: var(--muted);
   font-size: 14px;
   font-weight: 500;
@@ -1601,7 +1600,7 @@ button:focus-visible {
 
 .payoff-progress-panel,
 .negotiation-watch-panel,
-.projection-placeholder-panel {
+.monthly-payments-panel {
   display: grid;
   gap: 18px;
 }
@@ -1825,9 +1824,12 @@ button:focus-visible {
   background: color-mix(in srgb, var(--surface-strong) 38%, transparent);
   border: 1px solid color-mix(in srgb, var(--surface-strong) 18%, var(--border));
   border-radius: 8px 8px 2px 2px;
-  display: grid;
+  display: flex;
+  flex-direction: column-reverse;
+  justify-content: flex-start;
   justify-items: center;
   min-height: 4px;
+  overflow: visible;
   position: relative;
 }
 
@@ -1839,9 +1841,26 @@ button:focus-visible {
   font-size: 10px;
   font-style: normal;
   font-weight: 620;
-  margin-top: -24px;
   padding: 3px 6px;
+  position: absolute;
+  top: -26px;
   white-space: nowrap;
+}
+
+.monthly-payment-bar i {
+  display: block;
+  flex: 0 0 auto;
+  width: 100%;
+}
+
+.monthly-payment-principal {
+  background: color-mix(in srgb, var(--surface-strong) 70%, transparent);
+  border-radius: 0 0 2px 2px;
+}
+
+.monthly-payment-fees {
+  background: color-mix(in srgb, var(--danger) 42%, var(--surface-strong));
+  border-radius: 8px 8px 0 0;
 }
 
 .monthly-payment-column strong {
@@ -1849,6 +1868,26 @@ button:focus-visible {
   font-size: 11px;
   font-weight: 620;
   text-align: center;
+}
+
+.monthly-payment-summary {
+  display: grid;
+  gap: 8px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.monthly-payment-summary span {
+  background: color-mix(in srgb, var(--surface-soft) 34%, transparent);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 560;
+  min-width: 0;
+  overflow: hidden;
+  padding: 8px 10px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .debts-page {
@@ -6152,7 +6191,7 @@ button:focus-visible {
   .finance-urgency-panel,
   .payoff-progress-panel,
   .negotiation-watch-panel,
-  .projection-placeholder-panel,
+  .monthly-payments-panel,
   .finance-priority-card {
     padding: 16px;
   }

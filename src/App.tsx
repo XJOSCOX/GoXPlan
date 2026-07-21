@@ -408,18 +408,10 @@ export function App() {
 
   async function handleDeletePayment(paymentId: string) {
     if (!db || !user) throw new Error("GoXPlan is still starting. Please try again.");
-    const payment = payments.find((item) => item.id === paymentId);
-    openConfirmDialog({
-      confirmLabel: "Delete payment",
-      message: `${payment?.debtName ?? "This payment"} payment history will be removed and payoff progress will recalculate.`,
-      title: "Delete payment?",
-      onConfirm: async () => {
-        await deletePayment(db, user.id, paymentId);
-        setDebts(listDebts(db, user.id));
-        setPayments(listPayments(db, user.id));
-        setStats(getDashboardStats(db, user.id));
-      },
-    });
+    await deletePayment(db, user.id, paymentId);
+    setDebts(listDebts(db, user.id));
+    setPayments(listPayments(db, user.id));
+    setStats(getDashboardStats(db, user.id));
   }
 
   async function handleSavePayoffSettings(input: PayoffSettingsInput) {
