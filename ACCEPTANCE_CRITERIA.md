@@ -44,6 +44,9 @@
 - Trading accounts can be copied or separate.
 - Trading accounts support up to 5 sub-accounts.
 - Trading account profit, payout limit, and fee are saved.
+- User can transfer money between cash accounts.
+- User can record dated balance adjustments for cash accounts.
+- Editing or deleting an account movement restores previous cash balances.
 - Account delete uses a custom confirmation dialog.
 - Deleting an account unlinks income records without deleting the income history.
 
@@ -86,7 +89,7 @@
 
 ## Backup and Reports
 
-- JSON export includes accounts, debts, income, negotiations, payments, and payoff settings.
+- JSON export includes accounts, account movements, debts, income, negotiations, payments, and payoff settings.
 - Import validates backup shape before writing.
 - Import preview shows record counts.
 - Merge and replace modes work.

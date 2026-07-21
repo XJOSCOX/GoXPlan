@@ -1,13 +1,40 @@
-import { ArrowDownLeft, ArrowUpRight, Building2, ChartNoAxesColumnIncreasing, Edit3, Landmark, Plus, ReceiptText, Save, Trash2, X } from "lucide-react";
+import {
+  ArrowDownLeft,
+  ArrowLeftRight,
+  ArrowUpRight,
+  Building2,
+  ChartNoAxesColumnIncreasing,
+  Edit3,
+  Landmark,
+  Plus,
+  ReceiptText,
+  RotateCcw,
+  Save,
+  Trash2,
+  X,
+} from "lucide-react";
 import { type FormEvent, useMemo, useState } from "react";
-import type { FinancialAccount, FinancialAccountInput, FinancialAccountType, Income, Payment } from "../../types";
+import type {
+  AccountAdjustmentDirection,
+  AccountMovement,
+  AccountMovementInput,
+  AccountMovementType,
+  FinancialAccount,
+  FinancialAccountInput,
+  FinancialAccountType,
+  Income,
+  Payment,
+} from "../../types";
 
 type AccountsPageProps = {
   accounts: FinancialAccount[];
+  accountMovements: AccountMovement[];
   income: Income[];
   payments: Payment[];
   onSave: (input: FinancialAccountInput) => Promise<void>;
   onDelete: (accountId: string) => Promise<void>;
+  onSaveMovement: (input: AccountMovementInput) => Promise<void>;
+  onDeleteMovement: (movementId: string) => Promise<void>;
 };
 
 type AccountActivity = {
@@ -18,7 +45,7 @@ type AccountActivity = {
   label: string;
   meta: string;
   tone: "in" | "out";
-  type: "income" | "payment";
+  type: "income" | "movement" | "payment";
 };
 
 const emptyAccountForm: FinancialAccountInput = {
@@ -40,13 +67,43 @@ const accountTypeLabels: Record<FinancialAccountType, string> = {
   OTHER: "Other",
 };
 
-export function AccountsPage({ accounts, income, payments, onSave, onDelete }: AccountsPageProps) {
+const emptyMovementForm: AccountMovementInput = {
+  movementType: "TRANSFER",
+  fromAccountId: "",
+  toAccountId: "",
+  adjustmentAccountId: "",
+  adjustmentDirection: "INCREASE",
+  amount: "",
+  occurredDate: toDateInput(new Date().toISOString()),
+  notes: "",
+};
+
+const movementTypeLabels: Record<AccountMovementType, string> = {
+  ADJUSTMENT: "Adjustment",
+  TRANSFER: "Transfer",
+};
+
+const adjustmentDirectionLabels: Record<AccountAdjustmentDirection, string> = {
+  DECREASE: "Decrease",
+  INCREASE: "Increase",
+};
+
+export function AccountsPage({ accounts, accountMovements, income, payments, onSave, onDelete, onSaveMovement, onDeleteMovement }: AccountsPageProps) {
   const [form, setForm] = useState<FinancialAccountInput>(emptyAccountForm);
+  const [movementForm, setMovementForm] = useState<AccountMovementInput>(emptyMovementForm);
   const [error, setError] = useState("");
+  const [movementError, setMovementError] = useState("");
   const [isFormOpen, setIsFormOpen] = useState(false);
+  const [isMovementFormOpen, setIsMovementFormOpen] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
+  const [isSavingMovement, setIsSavingMovement] = useState(false);
   const accountTotals = summarizeAccounts(accounts);
-  const activitiesByAccount = useMemo(() => buildAccountActivities(accounts, income, payments), [accounts, income, payments]);
+  const cashAccounts = useMemo(() => accounts.filter((account) => account.accountType !== "TRADING"), [accounts]);
+  const activitiesByAccount = useMemo(
+    () => buildAccountActivities(accounts, accountMovements, income, payments),
+    [accountMovements, accounts, income, payments],
+  );
+  const recentMovements = useMemo(() => accountMovements.slice(0, 8), [accountMovements]);
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -67,6 +124,56 @@ export function AccountsPage({ accounts, income, payments, onSave, onDelete }: A
     setError("");
     setForm(emptyAccountForm);
     setIsFormOpen(true);
+  }
+
+  async function submitMovement(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setMovementError("");
+    setIsSavingMovement(true);
+
+    try {
+      await onSaveMovement(movementForm);
+      closeMovementForm();
+    } catch (caught) {
+      setMovementError(caught instanceof Error ? caught.message : "Could not save account movement.");
+    } finally {
+      setIsSavingMovement(false);
+    }
+  }
+
+  function openAddMovementForm() {
+    setMovementError("");
+    setMovementForm({
+      ...emptyMovementForm,
+      fromAccountId: cashAccounts[0]?.id ?? "",
+      toAccountId: cashAccounts[1]?.id ?? "",
+      adjustmentAccountId: cashAccounts[0]?.id ?? "",
+      occurredDate: toDateInput(new Date().toISOString()),
+    });
+    setIsMovementFormOpen(true);
+  }
+
+  function editMovement(movement: AccountMovement) {
+    const isIncrease = Boolean(movement.toAccountId);
+    setMovementError("");
+    setMovementForm({
+      id: movement.id,
+      adjustmentAccountId: (isIncrease ? movement.toAccountId : movement.fromAccountId) ?? "",
+      adjustmentDirection: isIncrease ? "INCREASE" : "DECREASE",
+      amount: centsToInput(movement.amountCents),
+      fromAccountId: movement.fromAccountId ?? "",
+      movementType: movement.movementType,
+      notes: movement.notes,
+      occurredDate: toDateInput(movement.occurredAt),
+      toAccountId: movement.toAccountId ?? "",
+    });
+    setIsMovementFormOpen(true);
+  }
+
+  function closeMovementForm() {
+    setMovementError("");
+    setMovementForm(emptyMovementForm);
+    setIsMovementFormOpen(false);
   }
 
   function editAccount(account: FinancialAccount) {
@@ -134,10 +241,16 @@ export function AccountsPage({ accounts, income, payments, onSave, onDelete }: A
             <h2>Accounts</h2>
             <p>{accounts.length ? "Bank cash and trading accounts that can fund the plan." : "Add your first bank or trading account."}</p>
           </div>
-          <button className="primary-button compact account-add-button" type="button" onClick={openAddForm}>
-            <Plus size={17} />
-            Add account
-          </button>
+          <div className="account-toolbar-actions">
+            <button className="icon-text-button account-transfer-button" type="button" onClick={openAddMovementForm} disabled={!cashAccounts.length}>
+              <ArrowLeftRight size={17} />
+              Move cash
+            </button>
+            <button className="primary-button compact account-add-button" type="button" onClick={openAddForm}>
+              <Plus size={17} />
+              Add account
+            </button>
+          </div>
         </div>
 
         {accounts.length ? (
@@ -270,7 +383,171 @@ export function AccountsPage({ accounts, income, payments, onSave, onDelete }: A
             <span>Then income can record dated payouts from that account with the right payout limit and fee.</span>
           </div>
         )}
+
+        <section className="account-movement-ledger">
+          <div className="account-movement-head">
+            <div>
+              <h3>Cash movement</h3>
+              <p>Transfers and balance corrections for bank or cash accounts.</p>
+            </div>
+            <span>{accountMovements.length} saved</span>
+          </div>
+
+          {recentMovements.length ? (
+            <div className="account-movement-list">
+              {recentMovements.map((movement) => (
+                <article className="account-movement-row" key={movement.id}>
+                  <span className={`account-movement-mark ${movement.movementType.toLowerCase()}`}>
+                    {movement.movementType === "TRANSFER" ? <ArrowLeftRight size={15} /> : <RotateCcw size={15} />}
+                  </span>
+                  <div>
+                    <strong>{formatMovementTitle(movement)}</strong>
+                    <span>{formatDate(movement.occurredAt)}{movement.notes ? ` - ${movement.notes}` : ""}</span>
+                  </div>
+                  <strong>{formatCurrency(movement.amountCents)}</strong>
+                  <div className="account-card-actions">
+                    <button className="icon-button" type="button" onClick={() => editMovement(movement)} aria-label="Edit account movement">
+                      <Edit3 size={15} />
+                    </button>
+                    <button className="icon-button bad-entry" type="button" onClick={() => void onDeleteMovement(movement.id)} aria-label="Delete account movement">
+                      <Trash2 size={15} />
+                    </button>
+                  </div>
+                </article>
+              ))}
+            </div>
+          ) : (
+            <div className="account-activity-empty">
+              <span>Transfers and manual balance corrections will appear here.</span>
+            </div>
+          )}
+        </section>
       </section>
+
+      {isMovementFormOpen && (
+        <div className="modal-backdrop" role="presentation">
+          <section className="modal-panel account-modal-panel movement-modal-panel" role="dialog" aria-modal="true" aria-labelledby="movement-form-title">
+            <header className="modal-header">
+              <div>
+                <p>Account movement</p>
+                <h2 id="movement-form-title">{movementForm.id ? "Edit movement" : "Move cash"}</h2>
+              </div>
+              <button className="icon-button" type="button" onClick={closeMovementForm} aria-label="Close movement form">
+                <X size={17} />
+              </button>
+            </header>
+
+            <form className="debt-form" onSubmit={submitMovement}>
+              <div className="form-grid two">
+                <label className="field-block">
+                  Type
+                  <select
+                    value={movementForm.movementType}
+                    onChange={(event) => setMovementForm({ ...movementForm, movementType: event.target.value as AccountMovementType })}
+                  >
+                    {Object.entries(movementTypeLabels).map(([value, label]) => (
+                      <option key={value} value={value}>
+                        {label}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label className="field-block">
+                  Date
+                  <input
+                    type="date"
+                    value={movementForm.occurredDate}
+                    onChange={(event) => setMovementForm({ ...movementForm, occurredDate: event.target.value })}
+                  />
+                </label>
+
+                {movementForm.movementType === "TRANSFER" ? (
+                  <>
+                    <label className="field-block">
+                      From
+                      <select value={movementForm.fromAccountId} onChange={(event) => setMovementForm({ ...movementForm, fromAccountId: event.target.value })}>
+                        <option value="">Choose account</option>
+                        {cashAccounts.map((account) => (
+                          <option key={account.id} value={account.id}>
+                            {account.name}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                    <label className="field-block">
+                      To
+                      <select value={movementForm.toAccountId} onChange={(event) => setMovementForm({ ...movementForm, toAccountId: event.target.value })}>
+                        <option value="">Choose account</option>
+                        {cashAccounts.map((account) => (
+                          <option key={account.id} value={account.id}>
+                            {account.name}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                  </>
+                ) : (
+                  <>
+                    <label className="field-block">
+                      Account
+                      <select
+                        value={movementForm.adjustmentAccountId}
+                        onChange={(event) => setMovementForm({ ...movementForm, adjustmentAccountId: event.target.value })}
+                      >
+                        <option value="">Choose account</option>
+                        {cashAccounts.map((account) => (
+                          <option key={account.id} value={account.id}>
+                            {account.name}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                    <label className="field-block">
+                      Direction
+                      <select
+                        value={movementForm.adjustmentDirection}
+                        onChange={(event) => setMovementForm({ ...movementForm, adjustmentDirection: event.target.value as AccountAdjustmentDirection })}
+                      >
+                        {Object.entries(adjustmentDirectionLabels).map(([value, label]) => (
+                          <option key={value} value={value}>
+                            {label}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                  </>
+                )}
+
+                <label className="field-block">
+                  Amount
+                  <input
+                    inputMode="decimal"
+                    value={movementForm.amount}
+                    onChange={(event) => setMovementForm({ ...movementForm, amount: event.target.value })}
+                  />
+                </label>
+              </div>
+
+              <label className="field-block">
+                Notes
+                <textarea value={movementForm.notes} onChange={(event) => setMovementForm({ ...movementForm, notes: event.target.value })} />
+              </label>
+
+              {movementError && <div className="form-error">{movementError}</div>}
+
+              <div className="form-actions">
+                <button className="icon-text-button" type="button" onClick={closeMovementForm}>
+                  Cancel
+                </button>
+                <button className="primary-button account-add-button" disabled={isSavingMovement} type="submit">
+                  <Save size={17} />
+                  {isSavingMovement ? "Saving..." : movementForm.id ? "Save changes" : "Save movement"}
+                </button>
+              </div>
+            </form>
+          </section>
+        </div>
+      )}
 
       {isFormOpen && (
         <div className="modal-backdrop" role="presentation">
@@ -467,7 +744,7 @@ function summarizeAccounts(accounts: FinancialAccount[]) {
   );
 }
 
-function buildAccountActivities(accounts: FinancialAccount[], income: Income[], payments: Payment[]) {
+function buildAccountActivities(accounts: FinancialAccount[], accountMovements: AccountMovement[], income: Income[], payments: Payment[]) {
   const activities = new Map<string, Array<Omit<AccountActivity, "balanceAfterCents">>>();
 
   function add(accountId: string | null, activity: Omit<AccountActivity, "balanceAfterCents">) {
@@ -511,6 +788,28 @@ function buildAccountActivities(accounts: FinancialAccount[], income: Income[], 
     });
   }
 
+  for (const movement of accountMovements) {
+    add(movement.fromAccountId, {
+      amountCents: -movement.amountCents,
+      date: movement.occurredAt,
+      id: `${movement.id}:from`,
+      label: movement.movementType === "TRANSFER" ? "Transfer sent" : "Balance decrease",
+      meta: movement.movementType === "TRANSFER" ? `To ${movement.toAccountName ?? "removed account"}` : movement.notes || "Manual correction",
+      tone: "out",
+      type: "movement",
+    });
+
+    add(movement.toAccountId, {
+      amountCents: movement.amountCents,
+      date: movement.occurredAt,
+      id: `${movement.id}:to`,
+      label: movement.movementType === "TRANSFER" ? "Transfer received" : "Balance increase",
+      meta: movement.movementType === "TRANSFER" ? `From ${movement.fromAccountName ?? "removed account"}` : movement.notes || "Manual correction",
+      tone: "in",
+      type: "movement",
+    });
+  }
+
   const withBalances = new Map<string, AccountActivity[]>();
 
   for (const account of accounts) {
@@ -535,6 +834,14 @@ function getAccountIcon(accountType: FinancialAccountType) {
   return <Building2 size={18} />;
 }
 
+function formatMovementTitle(movement: AccountMovement) {
+  if (movement.movementType === "TRANSFER") {
+    return `${movement.fromAccountName ?? "Removed account"} to ${movement.toAccountName ?? "Removed account"}`;
+  }
+  const accountName = movement.toAccountName ?? movement.fromAccountName ?? "Removed account";
+  return `${movement.toAccountId ? "Increase" : "Decrease"} ${accountName}`;
+}
+
 function formatCurrency(cents: number) {
   return new Intl.NumberFormat("en-US", { currency: "USD", style: "currency" }).format(cents / 100);
 }
@@ -548,6 +855,10 @@ function formatSignedCurrency(cents: number) {
 
 function formatDate(value: string) {
   return new Intl.DateTimeFormat("en-US", { day: "numeric", month: "short" }).format(new Date(value));
+}
+
+function toDateInput(value: string) {
+  return new Date(value).toISOString().slice(0, 10);
 }
 
 function formatPercent(value: number) {

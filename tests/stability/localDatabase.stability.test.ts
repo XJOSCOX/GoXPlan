@@ -2,16 +2,19 @@ import initSqlJs, { type Database, type SqlJsStatic } from "sql.js";
 import { afterEach, beforeAll, beforeEach, describe, expect, test } from "vitest";
 import {
   createInMemoryDatabaseForTesting,
+  deleteAccountMovement,
   deleteIncome,
   deletePayment,
   exportUserBackup,
   getBackupPreview,
   getPayoffSettings,
   importUserBackup,
+  listAccountMovements,
   listDebts,
   listFinancialAccounts,
   listPayments,
   setDatabaseWriterForTesting,
+  upsertAccountMovement,
   upsertDebt,
   upsertFinancialAccount,
   upsertIncome,
@@ -19,7 +22,7 @@ import {
   upsertPayment,
 } from "../../src/db/localDatabase";
 import { buildPayoffPlan } from "../../src/features/payoff/PayoffPlanPage";
-import type { DebtInput, FinancialAccountInput, IncomeInput, PaymentInput } from "../../src/types";
+import type { AccountMovementInput, DebtInput, FinancialAccountInput, IncomeInput, PaymentInput } from "../../src/types";
 
 const userId = "stability-user";
 
@@ -165,6 +168,58 @@ describe("local database stability", () => {
 
     await deletePayment(db, userId, payment.id);
     expect(getAccount(bank.id).availableBalanceCents).toBe(100000);
+  });
+
+  test("restores cash account movements when transfers and adjustments are edited and deleted", async () => {
+    const checking = await upsertFinancialAccount(db, userId, bankAccountInput({ availableBalance: "1000", name: "Checking" }));
+    const savings = await upsertFinancialAccount(db, userId, bankAccountInput({ availableBalance: "100", name: "Savings" }));
+
+    const transfer = await upsertAccountMovement(
+      db,
+      userId,
+      accountMovementInput({ amount: "250", fromAccountId: checking.id, toAccountId: savings.id }),
+    );
+
+    expect(getAccount(checking.id).availableBalanceCents).toBe(75000);
+    expect(getAccount(savings.id).availableBalanceCents).toBe(35000);
+
+    await upsertAccountMovement(
+      db,
+      userId,
+      accountMovementInput({ id: transfer.id, amount: "100", fromAccountId: checking.id, toAccountId: savings.id }),
+    );
+
+    expect(getAccount(checking.id).availableBalanceCents).toBe(90000);
+    expect(getAccount(savings.id).availableBalanceCents).toBe(20000);
+
+    await deleteAccountMovement(db, userId, transfer.id);
+    expect(getAccount(checking.id).availableBalanceCents).toBe(100000);
+    expect(getAccount(savings.id).availableBalanceCents).toBe(10000);
+
+    const adjustment = await upsertAccountMovement(
+      db,
+      userId,
+      accountMovementInput({ adjustmentAccountId: checking.id, amount: "50", movementType: "ADJUSTMENT" }),
+    );
+    expect(getAccount(checking.id).availableBalanceCents).toBe(105000);
+
+    await upsertAccountMovement(
+      db,
+      userId,
+      accountMovementInput({
+        adjustmentAccountId: checking.id,
+        adjustmentDirection: "DECREASE",
+        amount: "25",
+        id: adjustment.id,
+        movementType: "ADJUSTMENT",
+      }),
+    );
+    expect(getAccount(checking.id).availableBalanceCents).toBe(97500);
+    expect(listAccountMovements(db, userId)).toHaveLength(1);
+
+    await deleteAccountMovement(db, userId, adjustment.id);
+    expect(getAccount(checking.id).availableBalanceCents).toBe(100000);
+    expect(listAccountMovements(db, userId)).toHaveLength(0);
   });
 
   test("previews backup counts and rejects invalid backup shapes", async () => {
@@ -481,6 +536,20 @@ function paymentInput(patch: Partial<PaymentInput> = {}): PaymentInput {
     principal: "",
     resultingBalance: "",
     updateDebtStatus: false,
+    ...patch,
+  };
+}
+
+function accountMovementInput(patch: Partial<AccountMovementInput> = {}): AccountMovementInput {
+  return {
+    adjustmentAccountId: "",
+    adjustmentDirection: "INCREASE",
+    amount: "100",
+    fromAccountId: "",
+    movementType: "TRANSFER",
+    notes: "",
+    occurredDate: "2026-07-20",
+    toAccountId: "",
     ...patch,
   };
 }

@@ -127,6 +127,8 @@ export type Income = {
 export type IncomeSourceType = "EMPLOYMENT" | "TOPSTEP" | "BUSINESS" | "REFUND" | "BENEFITS" | "OTHER";
 export type TopstepPayoutScope = "ALL_ACCOUNTS" | "SINGLE_ACCOUNT";
 export type FinancialAccountType = "BANK" | "TRADING" | "OTHER";
+export type AccountMovementType = "TRANSFER" | "ADJUSTMENT";
+export type AccountAdjustmentDirection = "INCREASE" | "DECREASE";
 
 export type FinancialAccount = {
   id: string;
@@ -156,6 +158,35 @@ export type FinancialAccountInput = {
   tradingAccountProfits: string[];
   payoutLimitPercent: string;
   feePercent: string;
+  notes: string;
+};
+
+export type AccountMovement = {
+  id: string;
+  userId: string;
+  movementType: AccountMovementType;
+  fromAccountId: string | null;
+  fromAccountName: string | null;
+  fromAccountType: FinancialAccountType | null;
+  toAccountId: string | null;
+  toAccountName: string | null;
+  toAccountType: FinancialAccountType | null;
+  amountCents: number;
+  occurredAt: string;
+  notes: string;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type AccountMovementInput = {
+  id?: string;
+  movementType: AccountMovementType;
+  fromAccountId: string;
+  toAccountId: string;
+  adjustmentAccountId: string;
+  adjustmentDirection: AccountAdjustmentDirection;
+  amount: string;
+  occurredDate: string;
   notes: string;
 };
 

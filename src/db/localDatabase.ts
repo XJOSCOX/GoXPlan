@@ -2,6 +2,9 @@ import initSqlJs, { type Database, type SqlJsStatic, type SqlValue } from "sql.j
 import wasmUrl from "sql.js/dist/sql-wasm.wasm?url";
 import { hashPassword } from "../lib/crypto";
 import type {
+  AccountMovement,
+  AccountMovementInput,
+  AccountMovementType,
   DashboardStats,
   Debt,
   DebtCategory,
@@ -56,6 +59,18 @@ const backupTables = {
     "trading_account_profits_cents",
     "payout_limit_basis_points",
     "fee_basis_points",
+    "notes",
+    "created_at",
+    "updated_at",
+  ],
+  account_movements: [
+    "id",
+    "user_id",
+    "movement_type",
+    "from_account_id",
+    "to_account_id",
+    "amount_cents",
+    "occurred_at",
     "notes",
     "created_at",
     "updated_at",
@@ -169,8 +184,8 @@ const backupTables = {
 } as const;
 
 const backupTableNames = Object.keys(backupTables) as BackupTableName[];
-const backupImportOrder: BackupTableName[] = ["financial_accounts", "debts", "income", "negotiations", "payments", "payoff_settings"];
-const backupDeleteOrder: BackupTableName[] = ["payments", "negotiations", "income", "payoff_settings", "debts", "financial_accounts"];
+const backupImportOrder: BackupTableName[] = ["financial_accounts", "account_movements", "debts", "income", "negotiations", "payments", "payoff_settings"];
+const backupDeleteOrder: BackupTableName[] = ["payments", "negotiations", "income", "account_movements", "payoff_settings", "debts", "financial_accounts"];
 
 type BackupTableName = keyof typeof backupTables;
 type BackupTable = {
@@ -182,6 +197,7 @@ export type BackupImportMode = "MERGE" | "REPLACE";
 
 export type BackupRecordCounts = {
   accounts: number;
+  accountMovements: number;
   debts: number;
   income: number;
   negotiations: number;
@@ -413,6 +429,27 @@ export function listFinancialAccounts(db: Database, userId: string): FinancialAc
   );
 
   return (result[0]?.values ?? []).map(toFinancialAccount);
+}
+
+export function listAccountMovements(db: Database, userId: string): AccountMovement[] {
+  const result = db.exec(
+    `
+      SELECT
+        account_movements.id, account_movements.user_id, account_movements.movement_type,
+        account_movements.from_account_id, from_account.name, from_account.account_type,
+        account_movements.to_account_id, to_account.name, to_account.account_type,
+        account_movements.amount_cents, account_movements.occurred_at, account_movements.notes,
+        account_movements.created_at, account_movements.updated_at
+      FROM account_movements
+      LEFT JOIN financial_accounts AS from_account ON from_account.id = account_movements.from_account_id AND from_account.user_id = account_movements.user_id
+      LEFT JOIN financial_accounts AS to_account ON to_account.id = account_movements.to_account_id AND to_account.user_id = account_movements.user_id
+      WHERE account_movements.user_id = ?
+      ORDER BY account_movements.occurred_at DESC, account_movements.updated_at DESC
+    `,
+    [userId],
+  );
+
+  return (result[0]?.values ?? []).map(toAccountMovement);
 }
 
 export function listPayments(db: Database, userId: string): Payment[] {
@@ -688,7 +725,88 @@ export async function deleteFinancialAccount(db: Database, userId: string, accou
   db.run("UPDATE income SET account_id = NULL WHERE user_id = ? AND account_id = ?", [userId, accountId]);
   db.run("UPDATE income SET destination_account_id = NULL WHERE user_id = ? AND destination_account_id = ?", [userId, accountId]);
   db.run("UPDATE payments SET account_id = NULL WHERE user_id = ? AND account_id = ?", [userId, accountId]);
+  db.run("UPDATE account_movements SET from_account_id = NULL WHERE user_id = ? AND from_account_id = ?", [userId, accountId]);
+  db.run("UPDATE account_movements SET to_account_id = NULL WHERE user_id = ? AND to_account_id = ?", [userId, accountId]);
   db.run("DELETE FROM financial_accounts WHERE id = ? AND user_id = ?", [accountId, userId]);
+  await saveDatabase(db);
+}
+
+export async function upsertAccountMovement(db: Database, userId: string, input: AccountMovementInput) {
+  const now = new Date().toISOString();
+  const movementId = input.id ?? crypto.randomUUID();
+  const existing = input.id ? findAccountMovementById(db, userId, input.id) : undefined;
+  const amountCents = parseMoneyToCents(input.amount);
+  const occurredAt = parseDateToIso(input.occurredDate, now);
+  const movementType = normalizeAccountMovementType(input.movementType);
+  let fromAccountId: string | null = null;
+  let toAccountId: string | null = null;
+
+  if (amountCents <= 0) throw new Error("Amount must be greater than zero.");
+
+  if (movementType === "TRANSFER") {
+    fromAccountId = input.fromAccountId.trim();
+    toAccountId = input.toAccountId.trim();
+    if (!fromAccountId || !toAccountId) throw new Error("Choose both transfer accounts.");
+    if (fromAccountId === toAccountId) throw new Error("Transfer accounts must be different.");
+  } else {
+    const adjustmentAccountId = input.adjustmentAccountId.trim();
+    if (!adjustmentAccountId) throw new Error("Choose the account to adjust.");
+    if (input.adjustmentDirection === "DECREASE") {
+      fromAccountId = adjustmentAccountId;
+    } else {
+      toAccountId = adjustmentAccountId;
+    }
+  }
+
+  validateCashMovementAccount(db, userId, fromAccountId, "Source account");
+  validateCashMovementAccount(db, userId, toAccountId, "Destination account");
+
+  db.run("BEGIN TRANSACTION");
+  try {
+    if (existing) restoreAccountMovement(db, userId, existing);
+    applyAccountMovement(db, userId, fromAccountId, toAccountId, amountCents);
+
+    db.run(
+      `
+        INSERT INTO account_movements (
+          id, user_id, movement_type, from_account_id, to_account_id, amount_cents, occurred_at, notes, created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ON CONFLICT(id) DO UPDATE SET
+          movement_type = excluded.movement_type,
+          from_account_id = excluded.from_account_id,
+          to_account_id = excluded.to_account_id,
+          amount_cents = excluded.amount_cents,
+          occurred_at = excluded.occurred_at,
+          notes = excluded.notes,
+          updated_at = excluded.updated_at
+      `,
+      [movementId, userId, movementType, fromAccountId, toAccountId, amountCents, occurredAt, input.notes.trim(), existing?.createdAt ?? now, now],
+    );
+
+    db.run("COMMIT");
+  } catch (error) {
+    db.run("ROLLBACK");
+    throw error;
+  }
+
+  await saveDatabase(db);
+  return findAccountMovementById(db, userId, movementId)!;
+}
+
+export async function deleteAccountMovement(db: Database, userId: string, movementId: string) {
+  const existing = findAccountMovementById(db, userId, movementId);
+  if (!existing) return;
+
+  db.run("BEGIN TRANSACTION");
+  try {
+    restoreAccountMovement(db, userId, existing);
+    db.run("DELETE FROM account_movements WHERE id = ? AND user_id = ?", [movementId, userId]);
+    db.run("COMMIT");
+  } catch (error) {
+    db.run("ROLLBACK");
+    throw error;
+  }
+
   await saveDatabase(db);
 }
 
@@ -1080,6 +1198,7 @@ function upgradeBackupRowsWithOptionalColumns(tableName: BackupTableName, column
 function getBackupCounts(backup: GoXPlanBackup): BackupRecordCounts {
   return {
     accounts: backup.tables.financial_accounts.rows.length,
+    accountMovements: backup.tables.account_movements.rows.length,
     debts: backup.tables.debts.rows.length,
     income: backup.tables.income.rows.length,
     negotiations: backup.tables.negotiations.rows.length,
@@ -1139,6 +1258,20 @@ function sanitizeBackupRow(db: Database, userId: string, tableName: BackupTableN
 
   if (tableName === "financial_accounts") {
     sanitizeStringEnumValue(values, columns, "account_type", normalizeFinancialAccountType, "OTHER");
+  }
+
+  if (tableName === "account_movements") {
+    sanitizeStringEnumValue(values, columns, "movement_type", normalizeAccountMovementType, "ADJUSTMENT");
+    const fromAccountIdIndex = columns.indexOf("from_account_id");
+    const fromAccountId = fromAccountIdIndex >= 0 ? values[fromAccountIdIndex] : null;
+    if (fromAccountId && !findFinancialAccountById(db, userId, String(fromAccountId))) {
+      values[fromAccountIdIndex] = null;
+    }
+    const toAccountIdIndex = columns.indexOf("to_account_id");
+    const toAccountId = toAccountIdIndex >= 0 ? values[toAccountIdIndex] : null;
+    if (toAccountId && !findFinancialAccountById(db, userId, String(toAccountId))) {
+      values[toAccountIdIndex] = null;
+    }
   }
 
   if (tableName === "income") {
@@ -1297,6 +1430,26 @@ function findIncomeById(db: Database, userId: string, incomeId: string) {
   );
   const row = result[0]?.values[0];
   return row ? toIncome(row) : undefined;
+}
+
+function findAccountMovementById(db: Database, userId: string, movementId: string) {
+  const result = db.exec(
+    `
+      SELECT
+        account_movements.id, account_movements.user_id, account_movements.movement_type,
+        account_movements.from_account_id, from_account.name, from_account.account_type,
+        account_movements.to_account_id, to_account.name, to_account.account_type,
+        account_movements.amount_cents, account_movements.occurred_at, account_movements.notes,
+        account_movements.created_at, account_movements.updated_at
+      FROM account_movements
+      LEFT JOIN financial_accounts AS from_account ON from_account.id = account_movements.from_account_id AND from_account.user_id = account_movements.user_id
+      LEFT JOIN financial_accounts AS to_account ON to_account.id = account_movements.to_account_id AND to_account.user_id = account_movements.user_id
+      WHERE account_movements.id = ? AND account_movements.user_id = ?
+    `,
+    [movementId, userId],
+  );
+  const row = result[0]?.values[0];
+  return row ? toAccountMovement(row) : undefined;
 }
 
 function findFinancialAccountById(db: Database, userId: string, accountId: string) {
@@ -1534,6 +1687,25 @@ function toFinancialAccount(row: unknown[]): FinancialAccount {
   };
 }
 
+function toAccountMovement(row: unknown[]): AccountMovement {
+  return {
+    id: String(row[0]),
+    userId: String(row[1]),
+    movementType: normalizeAccountMovementType(String(row[2] ?? "ADJUSTMENT")),
+    fromAccountId: row[3] === null || row[3] === undefined ? null : String(row[3]),
+    fromAccountName: row[4] === null || row[4] === undefined ? null : String(row[4]),
+    fromAccountType: row[5] === null || row[5] === undefined ? null : normalizeFinancialAccountType(String(row[5])),
+    toAccountId: row[6] === null || row[6] === undefined ? null : String(row[6]),
+    toAccountName: row[7] === null || row[7] === undefined ? null : String(row[7]),
+    toAccountType: row[8] === null || row[8] === undefined ? null : normalizeFinancialAccountType(String(row[8])),
+    amountCents: Number(row[9]),
+    occurredAt: String(row[10]),
+    notes: String(row[11] ?? ""),
+    createdAt: String(row[12]),
+    updatedAt: String(row[13]),
+  };
+}
+
 function toPayment(row: unknown[]): Payment {
   return {
     id: String(row[0]),
@@ -1665,6 +1837,11 @@ function normalizeFinancialAccountType(value: string): FinancialAccountType {
   return "OTHER";
 }
 
+function normalizeAccountMovementType(value: string): AccountMovementType {
+  if (value === "TRANSFER") return value;
+  return "ADJUSTMENT";
+}
+
 function normalizeTopstepPayoutScope(value: unknown): TopstepPayoutScope | null {
   if (value === "ALL_ACCOUNTS" || value === "SINGLE_ACCOUNT") return value;
   return null;
@@ -1733,6 +1910,22 @@ function restoreIncomeAccountMovements(db: Database, userId: string, income: Inc
 function restorePaymentAccountMovement(db: Database, userId: string, payment: Payment) {
   if (!payment.accountId) return;
   adjustFinancialAccountBalance(db, userId, payment.accountId, payment.amountCents);
+}
+
+function restoreAccountMovement(db: Database, userId: string, movement: AccountMovement) {
+  applyAccountMovement(db, userId, movement.toAccountId, movement.fromAccountId, movement.amountCents);
+}
+
+function applyAccountMovement(db: Database, userId: string, fromAccountId: string | null, toAccountId: string | null, amountCents: number) {
+  if (fromAccountId) adjustFinancialAccountBalance(db, userId, fromAccountId, -amountCents);
+  if (toAccountId) adjustFinancialAccountBalance(db, userId, toAccountId, amountCents);
+}
+
+function validateCashMovementAccount(db: Database, userId: string, accountId: string | null, label: string) {
+  if (!accountId) return;
+  const account = findFinancialAccountById(db, userId, accountId);
+  if (!account) throw new Error(`${label} could not be found.`);
+  if (account.accountType === "TRADING") throw new Error("Transfers and adjustments can only use bank or cash accounts.");
 }
 
 function restoreFinancialAccountFromIncome(account: FinancialAccount, income: Income) {
@@ -2227,6 +2420,19 @@ const schema = `
     updated_at TEXT NOT NULL
   );
 
+  CREATE TABLE IF NOT EXISTS account_movements (
+    id TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    movement_type TEXT NOT NULL DEFAULT 'ADJUSTMENT',
+    from_account_id TEXT REFERENCES financial_accounts(id) ON DELETE SET NULL,
+    to_account_id TEXT REFERENCES financial_accounts(id) ON DELETE SET NULL,
+    amount_cents INTEGER NOT NULL DEFAULT 0,
+    occurred_at TEXT NOT NULL,
+    notes TEXT NOT NULL DEFAULT '',
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+  );
+
   CREATE TABLE IF NOT EXISTS income (
     id TEXT PRIMARY KEY,
     user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -2314,6 +2520,9 @@ const schema = `
 
   CREATE INDEX IF NOT EXISTS idx_debts_user ON debts(user_id);
   CREATE INDEX IF NOT EXISTS idx_financial_accounts_user ON financial_accounts(user_id);
+  CREATE INDEX IF NOT EXISTS idx_account_movements_user ON account_movements(user_id);
+  CREATE INDEX IF NOT EXISTS idx_account_movements_from_account ON account_movements(from_account_id);
+  CREATE INDEX IF NOT EXISTS idx_account_movements_to_account ON account_movements(to_account_id);
   CREATE INDEX IF NOT EXISTS idx_income_user ON income(user_id);
   CREATE INDEX IF NOT EXISTS idx_negotiations_user ON negotiations(user_id);
   CREATE INDEX IF NOT EXISTS idx_negotiations_debt ON negotiations(debt_id);

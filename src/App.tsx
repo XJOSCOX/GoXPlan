@@ -4,6 +4,7 @@ import { AppShell, type AppPage } from "./components/AppShell";
 import { ConfirmDialog } from "./components/ConfirmDialog";
 import {
   clearSessionUserId,
+  deleteAccountMovement,
   deleteDebt,
   deleteFinancialAccount,
   exportUserBackup,
@@ -15,6 +16,7 @@ import {
   deleteNegotiation,
   deletePayment,
   listFinancialAccounts,
+  listAccountMovements,
   listIncome,
   listDebts,
   listNegotiations,
@@ -24,6 +26,7 @@ import {
   setSessionUserId,
   deleteIncome,
   upsertDebt,
+  upsertAccountMovement,
   upsertFinancialAccount,
   upsertIncome,
   upsertNegotiation,
@@ -47,6 +50,8 @@ import { PaymentsPage } from "./features/payments/PaymentsPage";
 import { ReportsPage } from "./features/reports/ReportsPage";
 import { getInitialTheme, saveTheme, type Theme } from "./theme/theme";
 import type {
+  AccountMovement,
+  AccountMovementInput,
   DashboardStats,
   Debt,
   DebtInput,
@@ -104,6 +109,7 @@ export function App() {
   const [stats, setStats] = useState(emptyStats);
   const [debts, setDebts] = useState<Debt[]>([]);
   const [financialAccounts, setFinancialAccounts] = useState<FinancialAccount[]>([]);
+  const [accountMovements, setAccountMovements] = useState<AccountMovement[]>([]);
   const [income, setIncome] = useState<Income[]>([]);
   const [negotiations, setNegotiations] = useState<Negotiation[]>([]);
   const [payments, setPayments] = useState<Payment[]>([]);
@@ -139,6 +145,7 @@ export function App() {
           setStats(getDashboardStats(database, sessionUser.id));
           setDebts(listDebts(database, sessionUser.id));
           setFinancialAccounts(listFinancialAccounts(database, sessionUser.id));
+          setAccountMovements(listAccountMovements(database, sessionUser.id));
           setIncome(listIncome(database, sessionUser.id));
           setNegotiations(listNegotiations(database, sessionUser.id));
           setPayments(listPayments(database, sessionUser.id));
@@ -187,6 +194,7 @@ export function App() {
     setStats(getDashboardStats(db, nextUser.id));
     setDebts(listDebts(db, nextUser.id));
     setFinancialAccounts(listFinancialAccounts(db, nextUser.id));
+    setAccountMovements(listAccountMovements(db, nextUser.id));
     setIncome(listIncome(db, nextUser.id));
     setNegotiations(listNegotiations(db, nextUser.id));
     setPayments(listPayments(db, nextUser.id));
@@ -203,6 +211,7 @@ export function App() {
     setStats(getDashboardStats(db, nextUser.id));
     setDebts(listDebts(db, nextUser.id));
     setFinancialAccounts(listFinancialAccounts(db, nextUser.id));
+    setAccountMovements(listAccountMovements(db, nextUser.id));
     setIncome(listIncome(db, nextUser.id));
     setNegotiations(listNegotiations(db, nextUser.id));
     setPayments(listPayments(db, nextUser.id));
@@ -226,6 +235,7 @@ export function App() {
     setPayoffHasUnsavedChanges(false);
     setDebts([]);
     setFinancialAccounts([]);
+    setAccountMovements([]);
     setIncome([]);
     setNegotiations([]);
     setPayments([]);
@@ -381,7 +391,15 @@ export function App() {
     if (!db || !user) throw new Error("GoXPlan is still starting. Please try again.");
     await upsertFinancialAccount(db, user.id, input);
     setFinancialAccounts(listFinancialAccounts(db, user.id));
+    setAccountMovements(listAccountMovements(db, user.id));
     setIncome(listIncome(db, user.id));
+  }
+
+  async function handleSaveAccountMovement(input: AccountMovementInput) {
+    if (!db || !user) throw new Error("GoXPlan is still starting. Please try again.");
+    await upsertAccountMovement(db, user.id, input);
+    setFinancialAccounts(listFinancialAccounts(db, user.id));
+    setAccountMovements(listAccountMovements(db, user.id));
   }
 
   async function handleDeleteFinancialAccount(accountId: string) {
@@ -389,12 +407,28 @@ export function App() {
     const account = financialAccounts.find((item) => item.id === accountId);
     openConfirmDialog({
       confirmLabel: "Delete account",
-      message: `${account?.name ?? "This account"} will be removed. Income records stay saved, but they will no longer be linked to this account.`,
+      message: `${account?.name ?? "This account"} will be removed. Income, payment, and cash movement history stay saved, but they will no longer be linked to this account.`,
       title: "Delete account?",
       onConfirm: async () => {
         await deleteFinancialAccount(db, user.id, accountId);
         setFinancialAccounts(listFinancialAccounts(db, user.id));
+        setAccountMovements(listAccountMovements(db, user.id));
         setIncome(listIncome(db, user.id));
+      },
+    });
+  }
+
+  async function handleDeleteAccountMovement(movementId: string) {
+    if (!db || !user) throw new Error("GoXPlan is still starting. Please try again.");
+    const movement = accountMovements.find((item) => item.id === movementId);
+    openConfirmDialog({
+      confirmLabel: "Delete movement",
+      message: `${formatMovementName(movement)} will be removed and the affected account balances will be restored.`,
+      title: "Delete movement?",
+      onConfirm: async () => {
+        await deleteAccountMovement(db, user.id, movementId);
+        setFinancialAccounts(listFinancialAccounts(db, user.id));
+        setAccountMovements(listAccountMovements(db, user.id));
       },
     });
   }
@@ -451,6 +485,7 @@ export function App() {
     setStats(getDashboardStats(database, userId));
     setDebts(listDebts(database, userId));
     setFinancialAccounts(listFinancialAccounts(database, userId));
+    setAccountMovements(listAccountMovements(database, userId));
     setIncome(listIncome(database, userId));
     setNegotiations(listNegotiations(database, userId));
     setPayments(listPayments(database, userId));
@@ -525,8 +560,11 @@ export function App() {
       ) : page === "accounts" ? (
         <AccountsPage
           accounts={financialAccounts}
+          accountMovements={accountMovements}
           income={income}
           payments={payments}
+          onSaveMovement={handleSaveAccountMovement}
+          onDeleteMovement={handleDeleteAccountMovement}
           onSave={handleSaveFinancialAccount}
           onDelete={handleDeleteFinancialAccount}
         />
@@ -584,6 +622,7 @@ export function App() {
           accounts={financialAccounts}
           counts={{
             accounts: financialAccounts.length,
+            accountMovements: accountMovements.length,
             debts: debts.length,
             income: income.length,
             negotiations: negotiations.length,
@@ -663,6 +702,14 @@ function normalizeCreditorName(value: string) {
 
 function centsToInput(cents: number) {
   return (cents / 100).toFixed(2);
+}
+
+function formatMovementName(movement: AccountMovement | undefined) {
+  if (!movement) return "This account movement";
+  if (movement.movementType === "TRANSFER") {
+    return `Transfer from ${movement.fromAccountName ?? "one account"} to ${movement.toAccountName ?? "another account"}`;
+  }
+  return `Balance adjustment for ${movement.toAccountName ?? movement.fromAccountName ?? "this account"}`;
 }
 
 function toDateInput(value: string) {

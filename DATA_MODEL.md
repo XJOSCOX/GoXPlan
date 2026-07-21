@@ -82,6 +82,35 @@ Trading account behavior:
 - Separate accounts store individual profit values.
 - Payout limits and fees are stored as basis points.
 
+## Account Movements
+
+```ts
+type AccountMovement = {
+  id: string;
+  userId: string;
+  movementType: "TRANSFER" | "ADJUSTMENT";
+  fromAccountId: string | null;
+  fromAccountName: string | null;
+  fromAccountType: FinancialAccountType | null;
+  toAccountId: string | null;
+  toAccountName: string | null;
+  toAccountType: FinancialAccountType | null;
+  amountCents: number;
+  occurredAt: string;
+  notes: string;
+  createdAt: string;
+  updatedAt: string;
+};
+```
+
+Movement safety:
+
+- Transfers move money between bank/cash accounts.
+- Adjustments increase or decrease one bank/cash account.
+- Trading accounts are excluded from direct movements so payout rules remain controlled by income records.
+- Editing a movement restores the previous account effects before applying the new values.
+- Deleting a movement restores the affected account balances.
+
 ## Income
 
 ```ts
@@ -221,6 +250,7 @@ type PayoffSettings = {
 Backups export user-scoped rows for:
 
 - financial accounts
+- account movements
 - debts
 - income
 - negotiations

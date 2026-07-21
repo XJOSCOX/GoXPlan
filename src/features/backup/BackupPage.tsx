@@ -8,6 +8,7 @@ type BackupPageProps = {
   accounts: FinancialAccount[];
   counts: {
     accounts: number;
+    accountMovements: number;
     debts: number;
     income: number;
     negotiations: number;
@@ -162,6 +163,7 @@ export function BackupPage({ accounts, counts, debts, income, negotiations, onEx
         <div className="backup-summary-grid" aria-label="Workspace totals">
           <SummaryValue label="Debts" value={counts.debts} />
           <SummaryValue label="Accounts" value={counts.accounts} />
+          <SummaryValue label="Movements" value={counts.accountMovements} />
           <SummaryValue label="Income" value={counts.income} />
           <SummaryValue label="Negotiations" value={counts.negotiations} />
           <SummaryValue label="Payments" value={counts.payments} />
@@ -252,6 +254,7 @@ export function BackupPage({ accounts, counts, debts, income, negotiations, onEx
               </div>
               <PreviewCount label="Debts" value={selectedPreview.counts.debts} />
               <PreviewCount label="Accounts" value={selectedPreview.counts.accounts} />
+              <PreviewCount label="Movements" value={selectedPreview.counts.accountMovements} />
               <PreviewCount label="Income" value={selectedPreview.counts.income} />
               <PreviewCount label="Negotiations" value={selectedPreview.counts.negotiations} />
               <PreviewCount label="Payments" value={selectedPreview.counts.payments} />
@@ -335,7 +338,7 @@ function BackupDetail({ label }: { label: string }) {
 }
 
 function hasAnyRecords(counts: BackupPageProps["counts"]) {
-  return counts.accounts + counts.debts + counts.income + counts.negotiations + counts.payments > 0;
+  return counts.accounts + counts.accountMovements + counts.debts + counts.income + counts.negotiations + counts.payments > 0;
 }
 
 function debtsToCsv(debts: Debt[]) {
@@ -638,7 +641,7 @@ function formatDateTime(value: string) {
 function formatImportSummary(summary: BackupImportSummary, safetySnapshotCreated: boolean) {
   const action = summary.mode === "REPLACE" ? "Backup restored" : "Backup merged";
   const counts = summary.counts;
-  const details = `${counts.debts} debts, ${counts.accounts} accounts, ${counts.income} income records, ${counts.negotiations} negotiations, ${counts.payments} payments`;
+  const details = `${counts.debts} debts, ${counts.accounts} accounts, ${counts.accountMovements} movements, ${counts.income} income records, ${counts.negotiations} negotiations, ${counts.payments} payments`;
   return safetySnapshotCreated ? `${action}. Safety snapshot downloaded. Imported ${details}.` : `${action}. Imported ${details}.`;
 }
 

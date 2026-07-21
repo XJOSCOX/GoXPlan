@@ -19,6 +19,7 @@ Primary financial records should stay in the SQL database:
 - users
 - debts
 - financial accounts
+- account movements
 - income
 - payments
 - negotiations
@@ -52,6 +53,7 @@ Requirements:
 The backup export must include:
 
 - financial accounts
+- account movements
 - debts
 - income
 - negotiations
@@ -83,7 +85,7 @@ Backup payload requirements:
 - Failed writes must show visible errors.
 - Destructive actions must use custom confirmation dialogs.
 - Import must reject unknown or malformed table data.
-- Payment status and income account changes must be restorable on edit/delete.
+- Payment status, income account changes, and account movements must be restorable on edit/delete.
 
 ## Future Security Work
 
