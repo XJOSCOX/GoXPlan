@@ -1,4 +1,4 @@
-import { DatabaseBackup, Download, FileJson, FileSpreadsheet, Merge, Replace, Upload } from "lucide-react";
+import { CheckCircle2, DatabaseBackup, Download, FileJson, FileSpreadsheet, Merge, Replace, Upload } from "lucide-react";
 import { useState } from "react";
 import { ConfirmDialog } from "../../components/ConfirmDialog";
 import { getBackupPreview, type BackupImportMode, type BackupImportSummary, type BackupPreview, type GoXPlanBackup } from "../../db/localDatabase";
@@ -183,17 +183,25 @@ export function BackupPage({ counts, debts, onExportBackup, onImportBackup }: Ba
         </label>
 
         {selectedPreview && (
-          <div className="backup-preview-card">
-            <div>
-              <span>Backup date</span>
-              <strong>{formatDateTime(selectedPreview.exportedAt)}</strong>
+          <div className="backup-preview-wrap">
+            <div className="backup-preview-card">
+              <div>
+                <span>Backup date</span>
+                <strong>{formatDateTime(selectedPreview.exportedAt)}</strong>
+              </div>
+              <PreviewCount label="Debts" value={selectedPreview.counts.debts} />
+              <PreviewCount label="Accounts" value={selectedPreview.counts.accounts} />
+              <PreviewCount label="Income" value={selectedPreview.counts.income} />
+              <PreviewCount label="Negotiations" value={selectedPreview.counts.negotiations} />
+              <PreviewCount label="Payments" value={selectedPreview.counts.payments} />
+              <PreviewCount label="Plan" value={selectedPreview.counts.payoffSettings} />
             </div>
-            <PreviewCount label="Debts" value={selectedPreview.counts.debts} />
-            <PreviewCount label="Accounts" value={selectedPreview.counts.accounts} />
-            <PreviewCount label="Income" value={selectedPreview.counts.income} />
-            <PreviewCount label="Negotiations" value={selectedPreview.counts.negotiations} />
-            <PreviewCount label="Payments" value={selectedPreview.counts.payments} />
-            <PreviewCount label="Plan" value={selectedPreview.counts.payoffSettings} />
+            <div className="backup-preview-details" aria-label="Backup coverage">
+              <BackupDetail label={`${selectedPreview.details.tradingAccounts} trading account${selectedPreview.details.tradingAccounts === 1 ? "" : "s"}`} />
+              <BackupDetail label={`${selectedPreview.details.tradingIncome} trading payout${selectedPreview.details.tradingIncome === 1 ? "" : "s"}`} />
+              <BackupDetail label={`${selectedPreview.details.paymentSnapshots} payment snapshot${selectedPreview.details.paymentSnapshots === 1 ? "" : "s"}`} />
+              <BackupDetail label={formatFrequencyCoverage(selectedPreview.details.payoffFrequencies)} />
+            </div>
           </div>
         )}
 
@@ -253,6 +261,15 @@ function PreviewCount({ label, value }: { label: string; value: number }) {
       <span>{label}</span>
       <strong>{value}</strong>
     </div>
+  );
+}
+
+function BackupDetail({ label }: { label: string }) {
+  return (
+    <span>
+      <CheckCircle2 size={15} />
+      {label}
+    </span>
   );
 }
 
@@ -347,4 +364,9 @@ function formatImportSummary(summary: BackupImportSummary, safetySnapshotCreated
   const counts = summary.counts;
   const details = `${counts.debts} debts, ${counts.accounts} accounts, ${counts.income} income records, ${counts.negotiations} negotiations, ${counts.payments} payments`;
   return safetySnapshotCreated ? `${action}. Safety snapshot downloaded. Imported ${details}.` : `${action}. Imported ${details}.`;
+}
+
+function formatFrequencyCoverage(frequencies: string[]) {
+  if (!frequencies.length) return "No payoff plan";
+  return `${frequencies.map((value) => value.toLowerCase()).join(", ")} budget`;
 }

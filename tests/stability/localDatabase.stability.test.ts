@@ -140,6 +140,39 @@ describe("local database stability", () => {
     ).toThrow("debts backup section uses columns this app version cannot restore");
   });
 
+  test("previews newer backup coverage details", async () => {
+    const account = await upsertFinancialAccount(db, userId, tradingAccountInput({ tradingAccountProfits: ["2000", "2000", "2000", "2000"] }));
+    const debt = await upsertDebt(db, userId, debtInput({ balance: "1000", creditorName: "Covered debt" }));
+    await upsertIncome(
+      db,
+      userId,
+      tradingIncomeInput({
+        accountId: account.id,
+        grossAmount: "250",
+        topstepAccountCount: "4",
+        topstepProfitPerAccount: "2000",
+      }),
+    );
+    await upsertPayment(db, userId, paymentInput({ amount: "100", debtId: debt.id, resultingBalance: "900" }));
+    await upsertPayoffSettings(db, userId, {
+      budgetFrequency: "YEARLY",
+      emergencyReserve: "",
+      manualAllocations: {},
+      maxAccountsPerRound: "",
+      monthlyBudget: "7200",
+      strategy: "PRIORITY",
+    });
+
+    const preview = getBackupPreview(exportUserBackup(db, userId));
+
+    expect(preview.details).toMatchObject({
+      paymentSnapshots: 1,
+      payoffFrequencies: ["YEARLY"],
+      tradingAccounts: 1,
+      tradingIncome: 1,
+    });
+  });
+
   test("imports legacy payment backups without balance snapshot columns", async () => {
     const debt = await upsertDebt(db, userId, debtInput({ balance: "1000", creditorName: "Legacy debt" }));
     await upsertPayment(
@@ -219,6 +252,37 @@ describe("local database stability", () => {
         monthlyBudgetCents: 25000,
         strategy: "PRIORITY",
       });
+    } finally {
+      targetDb.close();
+    }
+  });
+
+  test("normalizes unsafe enum values during backup import", async () => {
+    const debt = await upsertDebt(db, userId, debtInput({ creditorName: "Unsafe enum debt" }));
+    await upsertPayment(db, userId, paymentInput({ amount: "100", debtId: debt.id, resultingBalance: "900" }));
+    await upsertPayoffSettings(db, userId, {
+      budgetFrequency: "WEEKLY",
+      emergencyReserve: "",
+      manualAllocations: {},
+      maxAccountsPerRound: "",
+      monthlyBudget: "100",
+      strategy: "PRIORITY",
+    });
+
+    const backup = exportUserBackup(db, userId);
+    setBackupCell(backup, "debts", "category", "BAD_CATEGORY");
+    setBackupCell(backup, "debts", "status", "BAD_STATUS");
+    setBackupCell(backup, "payments", "payment_type", "BAD_PAYMENT");
+    setBackupCell(backup, "payoff_settings", "strategy", "BAD_STRATEGY");
+    setBackupCell(backup, "payoff_settings", "budget_frequency", "BAD_FREQUENCY");
+
+    const targetDb = createSeededDatabase();
+    try {
+      await importUserBackup(targetDb, userId, backup, "REPLACE");
+
+      expect(listDebts(targetDb, userId)[0]).toMatchObject({ category: "OTHER", status: "OPEN" });
+      expect(listPayments(targetDb, userId)[0]).toMatchObject({ paymentType: "REGULAR" });
+      expect(getPayoffSettings(targetDb, userId)).toMatchObject({ budgetFrequency: "MONTHLY", strategy: "HYBRID" });
     } finally {
       targetDb.close();
     }
@@ -349,6 +413,18 @@ function removePaymentColumn(backup: ReturnType<typeof exportUserBackup>, column
   if (index === -1) return;
   backup.tables.payments.columns.splice(index, 1);
   backup.tables.payments.rows = backup.tables.payments.rows.map((row) => row.filter((_, rowIndex) => rowIndex !== index));
+}
+
+function setBackupCell(
+  backup: ReturnType<typeof exportUserBackup>,
+  tableName: keyof ReturnType<typeof exportUserBackup>["tables"],
+  columnName: string,
+  value: unknown,
+) {
+  const columnIndex = backup.tables[tableName].columns.indexOf(columnName);
+  expect(columnIndex).toBeGreaterThanOrEqual(0);
+  expect(backup.tables[tableName].rows.length).toBeGreaterThan(0);
+  backup.tables[tableName].rows[0][columnIndex] = value;
 }
 
 function getAllocatedAmounts(debts: Awaited<ReturnType<typeof upsertDebt>>[], periodBudgetCents: number) {

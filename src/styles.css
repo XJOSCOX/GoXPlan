@@ -5008,13 +5008,21 @@ button:focus-visible {
   font-size: 18px;
 }
 
+.backup-preview-wrap {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  display: grid;
+  gap: 10px;
+  padding: 12px;
+}
+
 .backup-preview-card {
   border: 1px solid var(--border);
   border-radius: 8px;
   display: grid;
   gap: 8px;
   grid-template-columns: 1.5fr repeat(6, minmax(92px, 1fr));
-  padding: 12px;
+  padding: 8px;
 }
 
 .backup-preview-card div {
@@ -5034,6 +5042,30 @@ button:focus-visible {
 
 .backup-preview-card strong {
   overflow-wrap: anywhere;
+}
+
+.backup-preview-details {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.backup-preview-details span {
+  align-items: center;
+  background: var(--surface-soft);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  color: var(--muted);
+  display: inline-flex;
+  font-size: 12px;
+  font-weight: 700;
+  gap: 6px;
+  min-height: 30px;
+  padding: 6px 10px;
+}
+
+.backup-preview-details svg {
+  color: var(--success);
 }
 
 .backup-mode-row {

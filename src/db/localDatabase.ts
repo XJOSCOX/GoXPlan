@@ -189,6 +189,12 @@ export type BackupRecordCounts = {
 
 export type BackupPreview = {
   counts: BackupRecordCounts;
+  details: {
+    paymentSnapshots: number;
+    payoffFrequencies: PayoffBudgetFrequency[];
+    tradingAccounts: number;
+    tradingIncome: number;
+  };
   exportedAt: string;
   version: number;
 };
@@ -495,6 +501,7 @@ export function getBackupPreview(input: unknown): BackupPreview {
   const backup = normalizeBackupPayload(input);
   return {
     counts: getBackupCounts(backup),
+    details: getBackupDetails(backup),
     exportedAt: backup.exportedAt,
     version: backup.version,
   };
@@ -1052,6 +1059,30 @@ function getBackupCounts(backup: GoXPlanBackup): BackupRecordCounts {
   };
 }
 
+function getBackupDetails(backup: GoXPlanBackup): BackupPreview["details"] {
+  const accountTypeIndex = backup.tables.financial_accounts.columns.indexOf("account_type");
+  const sourceTypeIndex = backup.tables.income.columns.indexOf("source_type");
+  const paymentBalanceBeforeIndex = backup.tables.payments.columns.indexOf("debt_balance_before_cents");
+  const paymentBalanceAfterIndex = backup.tables.payments.columns.indexOf("debt_balance_after_cents");
+  const budgetFrequencyIndex = backup.tables.payoff_settings.columns.indexOf("budget_frequency");
+  const payoffFrequencies = new Set<PayoffBudgetFrequency>();
+
+  for (const row of backup.tables.payoff_settings.rows) {
+    const frequency = normalizePayoffBudgetFrequency(String(row[budgetFrequencyIndex] ?? "MONTHLY"));
+    payoffFrequencies.add(frequency);
+  }
+
+  return {
+    paymentSnapshots:
+      paymentBalanceBeforeIndex < 0 || paymentBalanceAfterIndex < 0
+        ? 0
+        : backup.tables.payments.rows.filter((row) => row[paymentBalanceBeforeIndex] !== null || row[paymentBalanceAfterIndex] !== null).length,
+    payoffFrequencies: [...payoffFrequencies],
+    tradingAccounts: accountTypeIndex < 0 ? 0 : backup.tables.financial_accounts.rows.filter((row) => row[accountTypeIndex] === "TRADING").length,
+    tradingIncome: sourceTypeIndex < 0 ? 0 : backup.tables.income.rows.filter((row) => row[sourceTypeIndex] === "TOPSTEP").length,
+  };
+}
+
 function upsertBackupRow(db: Database, userId: string, tableName: BackupTableName, columns: string[], row: unknown[]) {
   const primaryKey = tableName === "payoff_settings" ? "user_id" : "id";
   const values = sanitizeBackupRow(db, userId, tableName, columns, row);
@@ -1073,15 +1104,27 @@ function sanitizeBackupRow(db: Database, userId: string, tableName: BackupTableN
   const values = columns.map((column, index) => toSqlValue(column === "user_id" ? userId : row[index]));
 
   if (tableName === "debts") {
+    sanitizeStringEnumValue(values, columns, "category", normalizeDebtCategory, "OTHER");
     sanitizeDebtStatusValue(values, columns, "status", "OPEN");
   }
 
+  if (tableName === "financial_accounts") {
+    sanitizeStringEnumValue(values, columns, "account_type", normalizeFinancialAccountType, "OTHER");
+  }
+
   if (tableName === "income") {
+    sanitizeStringEnumValue(values, columns, "source_type", normalizeIncomeSourceType, "OTHER");
+    sanitizeNullableStringEnumValue(values, columns, "topstep_payout_scope", normalizeTopstepPayoutScope);
     const accountIdIndex = columns.indexOf("account_id");
     const accountId = accountIdIndex >= 0 ? values[accountIdIndex] : null;
     if (accountId && !findFinancialAccountById(db, userId, String(accountId))) {
       values[accountIdIndex] = null;
     }
+  }
+
+  if (tableName === "negotiations") {
+    sanitizeStringEnumValue(values, columns, "contact_method", normalizeNegotiationContactMethod, "OTHER");
+    sanitizeStringEnumValue(values, columns, "status", normalizeNegotiationStatus, "CONTACTED");
   }
 
   if (tableName === "payments" || tableName === "negotiations") {
@@ -1093,11 +1136,43 @@ function sanitizeBackupRow(db: Database, userId: string, tableName: BackupTableN
   }
 
   if (tableName === "payments") {
+    sanitizeStringEnumValue(values, columns, "payment_type", normalizePaymentType, "REGULAR");
     sanitizeDebtStatusValue(values, columns, "debt_status_before", null);
     sanitizeDebtStatusValue(values, columns, "debt_status_after", null);
   }
 
+  if (tableName === "payoff_settings") {
+    sanitizeStringEnumValue(values, columns, "strategy", normalizePayoffStrategy, "HYBRID");
+    sanitizeStringEnumValue(values, columns, "budget_frequency", normalizePayoffBudgetFrequency, "MONTHLY");
+  }
+
   return values;
+}
+
+function sanitizeStringEnumValue<T extends string>(
+  values: SqlValue[],
+  columns: string[],
+  columnName: string,
+  normalize: (value: string) => T,
+  fallback: T,
+) {
+  const index = columns.indexOf(columnName);
+  if (index < 0) return;
+
+  const value = values[index];
+  values[index] = typeof value === "string" ? normalize(value) : fallback;
+}
+
+function sanitizeNullableStringEnumValue<T extends string>(
+  values: SqlValue[],
+  columns: string[],
+  columnName: string,
+  normalize: (value: unknown) => T | null,
+) {
+  const index = columns.indexOf(columnName);
+  if (index < 0) return;
+
+  values[index] = normalize(values[index]);
 }
 
 function sanitizeDebtStatusValue(values: SqlValue[], columns: string[], columnName: string, fallback: DebtStatus | null) {
