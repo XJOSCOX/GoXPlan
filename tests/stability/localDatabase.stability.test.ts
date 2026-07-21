@@ -459,10 +459,44 @@ describe("local database stability", () => {
     expect(getAllocatedAmounts(debts, 130000)).toEqual([100000, 30000]);
 
     const weeklyPlan = buildPayoffPlan(debts, [], 25000, "PRIORITY", null, {}, new Map());
+    expect(weeklyPlan.estimatedPeriods).toBe(6);
     expect(weeklyPlan.estimatedMonths).toBe(6);
 
     const yearlyPlan = buildPayoffPlan(debts, [], 130000, "PRIORITY", null, {}, new Map());
+    expect(yearlyPlan.estimatedPeriods).toBe(2);
     expect(yearlyPlan.estimatedMonths).toBe(2);
+  });
+
+  test("tracks manual payoff allocations separately from automatic budget allocation", async () => {
+    const debts = [
+      await upsertDebt(db, userId, debtInput({ balance: "500", creditorName: "First debt", priority: 1, priorityScore: 100 })),
+      await upsertDebt(db, userId, debtInput({ balance: "500", creditorName: "Second debt", priority: 2, priorityScore: 80 })),
+      await upsertDebt(db, userId, debtInput({ balance: "500", creditorName: "Third debt", priority: 3, priorityScore: 70 })),
+    ];
+
+    const plan = buildPayoffPlan(debts, [], 100000, "PRIORITY", 2, { [debts[1].id]: 50000 }, new Map());
+
+    expect(plan.planDebts.map((debt) => debt.allocationCents)).toEqual([50000, 50000, 0]);
+    expect(plan.allocatedCents).toBe(100000);
+    expect(plan.autoAllocationCents).toBe(50000);
+    expect(plan.manualAllocationCents).toBe(50000);
+    expect(plan.remainingBudgetCents).toBe(0);
+    expect(plan.isOverBudget).toBe(false);
+  });
+
+  test("keeps manual payoff allocations visible when they exceed the budget", async () => {
+    const [debt] = [
+      await upsertDebt(db, userId, debtInput({ balance: "1000", creditorName: "Manual debt", priority: 1, priorityScore: 100 })),
+    ];
+
+    const plan = buildPayoffPlan([debt], [], 50000, "PRIORITY", null, { [debt.id]: 70000 }, new Map());
+
+    expect(plan.planDebts[0].allocationCents).toBe(70000);
+    expect(plan.allocatedCents).toBe(70000);
+    expect(plan.autoAllocationCents).toBe(0);
+    expect(plan.manualAllocationCents).toBe(70000);
+    expect(plan.remainingBudgetCents).toBe(-20000);
+    expect(plan.isOverBudget).toBe(true);
   });
 });
 

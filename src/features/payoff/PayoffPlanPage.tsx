@@ -1,8 +1,15 @@
 import { AlertTriangle, ArrowRight, CalendarClock, CheckCircle2, Route, Save, Shield, Target } from "lucide-react";
 import { type FormEvent, useEffect, useMemo, useState } from "react";
 import { getDebtPriorityLevel } from "../../lib/debtPriority";
-import { buildFinancialSummary, summarizePayments, type PaymentSummary } from "../../lib/financialSummary";
-import { buildNegotiationInsights, getNegotiationDeadlineTime, getPlanningTarget, type DebtNegotiationInsight } from "../../lib/negotiationTargets";
+import {
+  buildFinancialSummary,
+  getDebtPlanningTarget,
+  getDebtRemainingCents,
+  getDebtSettlementSavingsCents,
+  summarizePayments,
+  type PaymentSummary,
+} from "../../lib/financialSummary";
+import { buildNegotiationInsights, getNegotiationDeadlineTime, type DebtNegotiationInsight } from "../../lib/negotiationTargets";
 import type {
   AccountMovement,
   Debt,
@@ -35,7 +42,7 @@ type PayoffPlanPageProps = {
 
 type PlanDebt = Debt & {
   allocationCents: number;
-  cumulativeMonths: number | null;
+  cumulativePeriods: number | null;
   explanation: string;
   fullRemainingAfterAllocationCents: number;
   fullRemainingCents: number;
@@ -138,9 +145,9 @@ export function PayoffPlanPage({
 
   const recommendationDebts = plan.planDebts.filter((debt) => debt.allocationCents > 0 || hasManualAllocation(form.manualAllocations, debt.id));
   const hasRecommendedPayments = recommendationDebts.length > 0;
-  const allocatedNow = plan.planDebts.reduce((sum, debt) => sum + debt.allocationCents, 0);
-  const cashRemaining = planBudgetCents - allocatedNow;
-  const allocationOverBudget = allocatedNow > planBudgetCents;
+  const allocatedNow = plan.allocatedCents;
+  const cashRemaining = plan.remainingBudgetCents;
+  const allocationOverBudget = plan.isOverBudget;
   const frequencyCopy = budgetFrequencyCopy[form.budgetFrequency];
   const recommendationDebtIds = new Set(recommendationDebts.map((debt) => debt.id));
   const futureOrderDebts = plan.planDebts.filter((debt) => !recommendationDebtIds.has(debt.id));
@@ -155,13 +162,14 @@ export function PayoffPlanPage({
   const allocationWarning = allocationOverBudget
     ? `Allocations are ${formatCurrency(allocatedNow - planBudgetCents)} above the ${budgetFrequencyLabels[form.budgetFrequency].toLowerCase()} budget.`
     : "";
-  const budgetWarning =
-    budgetValidation ||
-    (availableCashCents < 0
-      ? `Cash accounts are negative by ${formatCurrency(Math.abs(availableCashCents))}.`
-      : draftBudgetCents > safeAvailableCash
-        ? `Manual budget is ${formatCurrency(draftBudgetCents - safeAvailableCash)} above safe cash. Keep it if you are funding payments another way.`
-        : "");
+  const budgetWarning = getPayoffBudgetWarning({
+    availableCashCents,
+    budgetCents: draftBudgetCents,
+    frequency: form.budgetFrequency,
+    reserveCents: draftEmergencyReserveCents,
+    safeAvailableCash,
+    validationMessage: budgetValidation,
+  });
 
   function focusBudgetField() {
     document.getElementById("payoff-debt-budget")?.focus();
@@ -222,7 +230,7 @@ export function PayoffPlanPage({
           <strong>{formatCurrency(allocatedNow)}</strong>
         </article>
         <article>
-          <span>Full debt balance</span>
+          <span>Remaining balance</span>
           <strong>{formatCurrency(financialSummary.fullRemainingBalanceCents)}</strong>
         </article>
         <article>
@@ -346,14 +354,14 @@ export function PayoffPlanPage({
           </section>
 
           <div className="payoff-mini-cash">
-              <div>
-                <CalendarClock size={16} />
-                <span>Available cash</span>
-                <strong>{formatCurrency(availableCashCents)}</strong>
-              </div>
-              <div>
-                <span>Safe to plan</span>
-                <strong>{formatCurrency(safeAvailableCash)}</strong>
+            <div>
+              <CalendarClock size={16} />
+              <span>Available cash</span>
+              <strong>{formatCurrency(availableCashCents)}</strong>
+            </div>
+            <div>
+              <span>Safe to plan</span>
+              <strong>{formatCurrency(safeAvailableCash)}</strong>
             </div>
             <div>
               <span>Possible savings</span>
@@ -364,28 +372,31 @@ export function PayoffPlanPage({
 
         <div className="payoff-workspace-main">
           <section className="panel payoff-recommendation-panel">
-          <div className="payoff-toolbar">
-            <div className="payoff-panel-heading">
-              <Route size={18} />
-              <div>
-                <h2>Recommended payments</h2>
-                <p>{recommendedCopy}</p>
+            <div className="payoff-toolbar">
+              <div className="payoff-panel-heading">
+                <Route size={18} />
+                <div>
+                  <h2>Recommended payments</h2>
+                  <p>{recommendedCopy}</p>
+                </div>
               </div>
+              {planBudgetCents > 0 && (
+                <span className={allocationOverBudget ? "count-pill danger-pill" : "count-pill"}>
+                  {allocationOverBudget ? `${formatCurrency(allocatedNow - planBudgetCents)} over` : `${formatCurrency(cashRemaining)} left`}
+                </span>
+              )}
             </div>
-            {planBudgetCents > 0 && <span className={allocationOverBudget ? "count-pill danger-pill" : "count-pill"}>{allocationOverBudget ? `${formatCurrency(allocatedNow - planBudgetCents)} over` : `${formatCurrency(cashRemaining)} left`}</span>}
-          </div>
 
-          {allocationWarning && (
-            <div className="allocation-warning compact-warning payoff-allocation-warning">
-              <AlertTriangle size={16} />
-              <span>{allocationWarning}</span>
-            </div>
-          )}
+            {allocationWarning && (
+              <div className="allocation-warning compact-warning payoff-allocation-warning">
+                <AlertTriangle size={16} />
+                <span>{allocationWarning}</span>
+              </div>
+            )}
 
-          {hasRecommendedPayments ? (
-            <div className="payoff-payment-queue">
-              {recommendationDebts
-                .map((debt, index) => {
+            {hasRecommendedPayments ? (
+              <div className="payoff-payment-queue">
+                {recommendationDebts.map((debt, index) => {
                   const level = getDebtPriorityLevel(debt.priorityScore);
                   const percentCovered = debt.targetRemainingCents > 0 ? Math.min(100, Math.round((debt.allocationCents / debt.targetRemainingCents) * 100)) : 0;
                   const hasManualAmount = hasManualAllocation(form.manualAllocations, debt.id);
@@ -427,77 +438,90 @@ export function PayoffPlanPage({
                     </article>
                   );
                 })}
-            </div>
-          ) : (
-            <div className="empty-state payoff-empty-state">
-              <strong>No payment queue yet.</strong>
-              <span>Save a budget and frequency to turn the payoff order into payments you can record.</span>
-              <div className="payoff-empty-actions">
-                <button className="payoff-row-action" type="button" onClick={focusBudgetField}>
-                  Set budget
-                </button>
-                {safeAvailableCash > 0 && (
-                  <button className="payoff-soft-action" type="button" onClick={useSafeCash}>
-                    Use {formatCurrency(safeAvailableCash)}
-                  </button>
-                )}
               </div>
-            </div>
-          )}
+            ) : (
+              <div className="empty-state payoff-empty-state">
+                <strong>No payment queue yet.</strong>
+                <span>Save a budget and frequency to turn the payoff order into payments you can record.</span>
+                <div className="payoff-empty-actions">
+                  <button className="payoff-row-action" type="button" onClick={focusBudgetField}>
+                    Set budget
+                  </button>
+                  {safeAvailableCash > 0 && (
+                    <button className="payoff-soft-action" type="button" onClick={useSafeCash}>
+                      Use {formatCurrency(safeAvailableCash)}
+                    </button>
+                  )}
+                </div>
+              </div>
+            )}
           </section>
 
           <section className="panel payoff-order-panel">
-          <div className="payoff-toolbar">
-          <div className="payoff-panel-heading">
-            <Route size={18} />
-            <div>
-              <h2>Payoff order</h2>
-              <p>{visibleOrderDebts.length ? `Next after this ${frequencyCopy.singular.toLowerCase()}.` : "The current recommendation covers the active queue."}</p>
+            <div className="payoff-toolbar">
+              <div className="payoff-panel-heading">
+                <Route size={18} />
+                <div>
+                  <h2>Payoff order</h2>
+                  <p>
+                    {visibleOrderDebts.length
+                      ? `Next after this ${frequencyCopy.singular.toLowerCase()}.`
+                      : "The current recommendation covers the active queue."}
+                  </p>
+                </div>
+              </div>
+              <span className="count-pill">{formatPeriodEstimate(plan.estimatedPeriods, form.budgetFrequency)}</span>
             </div>
-          </div>
-          <span className="count-pill">{formatPeriodEstimate(plan.estimatedMonths, form.budgetFrequency)}</span>
-        </div>
 
-        {visibleOrderDebts.length ? (
-          <div className="payoff-order-list">
-            {visibleOrderDebts.map((debt, index) => {
-              const level = getDebtPriorityLevel(debt.priorityScore);
-              const paidPercent = debt.fullRemainingCents + debt.paidCents > 0 ? Math.min(100, Math.round((debt.paidCents / (debt.fullRemainingCents + debt.paidCents)) * 100)) : 0;
-              const planIndex = plan.planDebts.findIndex((item) => item.id === debt.id);
+            {visibleOrderDebts.length ? (
+              <div className="payoff-order-list">
+                {visibleOrderDebts.map((debt, index) => {
+                  const level = getDebtPriorityLevel(debt.priorityScore);
+                  const paidPercent =
+                    debt.fullRemainingCents + debt.paidCents > 0
+                      ? Math.min(100, Math.round((debt.paidCents / (debt.fullRemainingCents + debt.paidCents)) * 100))
+                      : 0;
+                  const planIndex = plan.planDebts.findIndex((item) => item.id === debt.id);
 
-              return (
-                <article className="payoff-order-row" key={debt.id}>
-                  <span className="payoff-rank">{planIndex + 1 || index + 1}</span>
-                  <div className="payoff-row-title">
-                    <strong>{debt.creditorName}</strong>
+                  return (
+                    <article className="payoff-order-row" key={debt.id}>
+                      <span className="payoff-rank">{planIndex + 1 || index + 1}</span>
+                      <div className="payoff-row-title">
+                        <strong>{debt.creditorName}</strong>
+                        <span>
+                          {level} - {debt.explanation}
+                          {debt.payForDelete || debt.payForDeleteFromNegotiation ? " - Pay-for-delete" : ""}
+                        </span>
+                      </div>
+                      <div className="payoff-row-money">
+                        <span>{debt.targetLabel}</span>
+                        <strong>{formatCurrency(debt.targetRemainingCents)}</strong>
+                      </div>
+                      <div className="payoff-row-meter" aria-label={`${paidPercent}% paid`}>
+                        <span style={{ width: `${paidPercent}%` }} />
+                      </div>
+                      <span className="payoff-row-state">{formatPeriodState(debt.cumulativePeriods, form.budgetFrequency)}</span>
+                    </article>
+                  );
+                })}
+                {hiddenOrderCount > 0 && (
+                  <div className="payoff-order-more">
                     <span>
-                      {level} - {debt.explanation}
-                      {debt.payForDelete || debt.payForDeleteFromNegotiation ? " - Pay-for-delete" : ""}
+                      {hiddenOrderCount} more debt{hiddenOrderCount === 1 ? "" : "s"} remain after this view.
                     </span>
                   </div>
-                  <div className="payoff-row-money">
-                    <span>{debt.targetLabel}</span>
-                    <strong>{formatCurrency(debt.targetRemainingCents)}</strong>
-                  </div>
-                  <div className="payoff-row-meter" aria-label={`${paidPercent}% paid`}>
-                    <span style={{ width: `${paidPercent}%` }} />
-                  </div>
-                  <span className="payoff-row-state">{formatPeriodState(debt.cumulativeMonths, form.budgetFrequency)}</span>
-                </article>
-              );
-            })}
-            {hiddenOrderCount > 0 && (
-              <div className="payoff-order-more">
-                <span>{hiddenOrderCount} more debt{hiddenOrderCount === 1 ? "" : "s"} remain after this view.</span>
+                )}
+              </div>
+            ) : (
+              <div className="empty-state payoff-empty-state">
+                <strong>{plan.planDebts.length ? "Current queue is funded." : "No active debts in the plan yet."}</strong>
+                <span>
+                  {plan.planDebts.length
+                    ? "Use the recommended payments above, then record payments to refresh this order."
+                    : "Add debts first, then come back here to choose a payoff budget."}
+                </span>
               </div>
             )}
-          </div>
-        ) : (
-          <div className="empty-state payoff-empty-state">
-            <strong>{plan.planDebts.length ? "Current queue is funded." : "No active debts in the plan yet."}</strong>
-            <span>{plan.planDebts.length ? "Use the recommended payments above, then record payments to refresh this order." : "Add debts first, then come back here to choose a payoff budget."}</span>
-          </div>
-        )}
           </section>
         </div>
       </section>
@@ -540,7 +564,7 @@ export function buildPayoffPlan(
       return {
         ...debt,
         allocationCents: 0,
-        cumulativeMonths: null,
+        cumulativePeriods: null,
         explanation: getPlanExplanation(debt, strategy, figures.targetSource),
         fullRemainingAfterAllocationCents: figures.fullRemainingCents,
         fullRemainingCents: figures.fullRemainingCents,
@@ -579,16 +603,24 @@ export function buildPayoffPlan(
     return {
       ...debt,
       allocationCents,
-      cumulativeMonths: budgetCents > 0 ? cumulativePeriods : null,
+      cumulativePeriods: budgetCents > 0 ? cumulativePeriods : null,
       fullRemainingAfterAllocationCents: Math.max(0, debt.fullRemainingCents - allocationCents),
       targetRemainingAfterAllocationCents: Math.max(0, debt.targetRemainingCents - allocationCents),
     };
   });
+  const allocatedCents = planDebts.reduce((sum, debt) => sum + debt.allocationCents, 0);
+  const estimatedPeriods = budgetCents > 0 ? cumulativePeriods : 0;
 
   return {
-    estimatedMonths: budgetCents > 0 ? cumulativePeriods : 0,
+    allocatedCents,
+    autoAllocationCents: Math.max(0, allocatedCents - manualAllocationTotal),
+    estimatedMonths: estimatedPeriods,
+    estimatedPeriods,
+    isOverBudget: allocatedCents > budgetCents,
+    manualAllocationCents: manualAllocationTotal,
     planDebts,
     possibleSavingsCents: planDebts.reduce((sum, debt) => sum + getPlanSavingsCents(debt), 0),
+    remainingBudgetCents: budgetCents - allocatedCents,
     totalCurrentTarget: planDebts.reduce((sum, debt) => sum + debt.targetRemainingCents, 0),
     totalFullRemaining: planDebts.reduce((sum, debt) => sum + debt.fullRemainingCents, 0),
     totalPaid: planDebts.reduce((sum, debt) => sum + debt.paidCents, 0),
@@ -597,9 +629,8 @@ export function buildPayoffPlan(
 
 function getDebtFigures(debt: Debt, summary: PaymentSummary, insight?: DebtNegotiationInsight) {
   const paidCents = summary.paidByDebt.get(debt.id) ?? 0;
-  const resultingBalance = summary.resultingBalanceByDebt.get(debt.id)?.amount;
-  const fullRemainingCents = resultingBalance ?? Math.max(0, debt.balanceCents - paidCents);
-  const obligation = getPlanningTarget(debt, paidCents, fullRemainingCents, insight);
+  const fullRemainingCents = getDebtRemainingCents(debt, summary);
+  const obligation = getDebtPlanningTarget(debt, summary, insight);
 
   return {
     fullRemainingCents,
@@ -622,7 +653,7 @@ function comparePlanDebts(left: PlanDebt, right: PlanDebt, strategy: PayoffStrat
   if (strategy === "SETTLEMENT_FIRST" || strategy === "SETTLEMENT") {
     const leftTarget = left.settlementCents ?? left.targetRemainingCents ?? Number.MAX_SAFE_INTEGER;
     const rightTarget = right.settlementCents ?? right.targetRemainingCents ?? Number.MAX_SAFE_INTEGER;
-    return getSettlementSavingsCents(right) - getSettlementSavingsCents(left) || leftTarget - rightTarget || left.priority - right.priority;
+    return getDebtSettlementSavingsCents(right) - getDebtSettlementSavingsCents(left) || leftTarget - rightTarget || left.priority - right.priority;
   }
   if (strategy === "CREDIT_REPAIR_FIRST") {
     return getCreditRepairRank(right) - getCreditRepairRank(left) || right.priorityScore - left.priorityScore || left.priority - right.priority;
@@ -675,7 +706,7 @@ function getCreditRepairRank(debt: Debt) {
 }
 
 function getHybridRank(debt: Debt) {
-  return getEmergencyRank(debt) + Math.round(getCreditRepairRank(debt) / 2) + Math.round(getSettlementSavingsCents(debt) / 10000);
+  return getEmergencyRank(debt) + Math.round(getCreditRepairRank(debt) / 2) + Math.round(getDebtSettlementSavingsCents(debt) / 10000);
 }
 
 function getPlanExplanation(debt: Debt, strategy: PayoffStrategy, targetSource: "debt" | "negotiation") {
@@ -687,7 +718,7 @@ function getPlanExplanation(debt: Debt, strategy: PayoffStrategy, targetSource: 
   }
   if (strategy === "HIGH_BALANCE") return "Largest balance first.";
   if (strategy === "SETTLEMENT_FIRST" || strategy === "SETTLEMENT") {
-    return debt.settlementCents ? `Save ${formatCurrency(getSettlementSavingsCents(debt))} with settlement.` : "No settlement target recorded.";
+    return debt.settlementCents ? `Save ${formatCurrency(getDebtSettlementSavingsCents(debt))} with settlement.` : "No settlement target recorded.";
   }
   if (strategy === "CREDIT_REPAIR_FIRST") {
     if (debt.reported && debt.payForDelete) return "Reported with pay-for-delete potential.";
@@ -703,13 +734,9 @@ function getPlanExplanation(debt: Debt, strategy: PayoffStrategy, targetSource: 
   return "Manual priority order.";
 }
 
-function getSettlementSavingsCents(debt: Debt) {
-  return debt.settlementCents === null ? 0 : Math.max(0, debt.balanceCents - debt.settlementCents);
-}
-
 function getPlanSavingsCents(debt: PlanDebt) {
   if (debt.targetSource === "negotiation") return Math.max(0, debt.fullRemainingCents - debt.targetRemainingCents);
-  return getSettlementSavingsCents(debt);
+  return getDebtSettlementSavingsCents(debt);
 }
 
 function createPaymentDraft(debt: PlanDebt, allocationCents?: number): PaymentInput {
@@ -744,6 +771,32 @@ function formatPeriodEstimate(periods: number, frequency: PayoffBudgetFrequency)
 
 function formatPeriodState(periods: number | null, frequency: PayoffBudgetFrequency) {
   return periods ? `${budgetFrequencyCopy[frequency].singular} ${periods}` : "Set budget";
+}
+
+function getPayoffBudgetWarning({
+  availableCashCents,
+  budgetCents,
+  frequency,
+  reserveCents,
+  safeAvailableCash,
+  validationMessage,
+}: {
+  availableCashCents: number;
+  budgetCents: number;
+  frequency: PayoffBudgetFrequency;
+  reserveCents: number;
+  safeAvailableCash: number;
+  validationMessage: string;
+}) {
+  if (validationMessage) return validationMessage;
+  if (availableCashCents < 0) return `Cash accounts are negative by ${formatCurrency(Math.abs(availableCashCents))} before this plan.`;
+  if (reserveCents > availableCashCents && reserveCents > 0) {
+    return `Reserve is ${formatCurrency(reserveCents - availableCashCents)} above available cash, so safe cash is $0.`;
+  }
+  if (budgetCents > safeAvailableCash) {
+    return `Budget is ${formatCurrency(budgetCents - safeAvailableCash)} above safe cash for this ${budgetFrequencyCopy[frequency].singular.toLowerCase()}.`;
+  }
+  return "";
 }
 
 function getBudgetValidationMessage(form: PayoffSettingsInput) {
