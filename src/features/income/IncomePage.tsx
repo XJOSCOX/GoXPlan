@@ -147,9 +147,13 @@ export function IncomePage({ financialAccounts, income, onSave, onDelete }: Inco
 
   return (
     <div className="page-stack income-page">
-      <section className="summary-strip">
+      <section className="summary-strip income-summary-strip">
         <article>
-          <span>Net income</span>
+          <span>Gross received</span>
+          <strong>{formatCurrency(totals.gross)}</strong>
+        </article>
+        <article>
+          <span>Net received</span>
           <strong>{formatCurrency(totals.net)}</strong>
         </article>
         <article>
@@ -191,21 +195,35 @@ export function IncomePage({ financialAccounts, income, onSave, onDelete }: Inco
                 <div className="income-source">
                   <Banknote size={17} />
                   <div>
-                    <strong>{item.source}</strong>
-                    <span>
-                      {sourceTypeLabels[item.sourceType]}
-                      {item.accountName ? ` - ${item.accountName}` : ""}
-                      {item.sourceType === "TOPSTEP" && item.topstepAccountCount
-                        ? ` - ${getTopstepSummary(item)}`
-                        : ""}
-                      {item.notes ? ` - ${item.notes}` : ""}
-                      {item.remainingAmountCents < 0 ? " - Overassigned" : ""}
-                    </span>
+                    <div className="income-title-row">
+                      <strong>{item.source}</strong>
+                      <span className={`income-type-pill income-type-${item.sourceType.toLowerCase()}`}>
+                        {sourceTypeLabels[item.sourceType]}
+                      </span>
+                      {item.notes && (
+                        <span
+                          aria-label={`Notes for ${item.source}`}
+                          className="note-tooltip income-note-tooltip"
+                          data-tooltip={item.notes}
+                          tabIndex={0}
+                          title={item.notes}
+                        >
+                          !
+                        </span>
+                      )}
+                    </div>
+                    <div className="income-meta-strip">
+                      {getIncomeMetaChips(item).map((chip) => (
+                        <span className={chip.tone === "danger" ? "income-meta-warning" : ""} key={chip.label}>
+                          {chip.label}
+                        </span>
+                      ))}
+                    </div>
                   </div>
                 </div>
 
                 <div className="income-breakdown">
-                  <span>Gross</span>
+                  <span>{item.sourceType === "TOPSTEP" ? "Total payout" : "Gross"}</span>
                   <strong>{formatCurrency(item.grossAmountCents)}</strong>
                 </div>
 
@@ -239,8 +257,8 @@ export function IncomePage({ financialAccounts, income, onSave, onDelete }: Inco
           </div>
         ) : (
           <div className="empty-state income-empty-state">
-            <strong>Start with your next paycheck or income source.</strong>
-            <span>Income will help GoXPlan calculate what can safely move toward debt payments later.</span>
+            <strong>Start with your next paycheck, payout, or transfer.</strong>
+            <span>GoXPlan will separate gross, fees, assigned money, and cash still available to plan.</span>
           </div>
         )}
       </section>
@@ -609,13 +627,33 @@ function clampWholeNumber(value: string, min: number, max: number) {
   return Math.min(max, Math.max(min, Math.round(parsed)));
 }
 
-function getTopstepSummary(item: Income) {
-  const accounts =
-    item.topstepPayoutScope === "SINGLE_ACCOUNT"
-      ? `Account ${item.topstepSelectedAccount ?? 1}`
-      : `${item.topstepAccountCount ?? 1} account${item.topstepAccountCount === 1 ? "" : "s"}`;
-  const profit = item.topstepTotalProfitCents === null ? "" : `, profit ${formatCurrency(item.topstepTotalProfitCents)}`;
-  return `${accounts}${profit}`;
+function getIncomeMetaChips(item: Income) {
+  const chips: Array<{ label: string; tone?: "danger" }> = [];
+
+  if (item.accountName) {
+    chips.push({ label: item.accountName });
+  }
+
+  if (item.sourceType === "TOPSTEP") {
+    const accountCount = Math.max(1, item.topstepAccountCount ?? 1);
+    const payoutScope =
+      item.topstepPayoutScope === "SINGLE_ACCOUNT" ? `Account ${item.topstepSelectedAccount ?? 1}` : `${accountCount} accounts`;
+    chips.push({ label: payoutScope });
+
+    if (item.topstepPayoutScope === "ALL_ACCOUNTS") {
+      chips.push({ label: `${formatCurrency(getEditableGrossAmountCents(item))}/account` });
+    }
+
+    if (item.feesCents) {
+      chips.push({ label: `${formatCurrency(item.feesCents)} fee` });
+    }
+  }
+
+  if (item.remainingAmountCents < 0) {
+    chips.push({ label: "Overassigned", tone: "danger" });
+  }
+
+  return chips.length ? chips : [{ label: "No account linked" }];
 }
 
 function formatPercent(basisPoints: number) {

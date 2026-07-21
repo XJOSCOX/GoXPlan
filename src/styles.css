@@ -1920,6 +1920,10 @@ button:focus-visible {
   line-height: 1;
 }
 
+.income-summary-strip {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
 .debt-layout {
   align-items: start;
   display: grid;
@@ -3144,8 +3148,8 @@ button:focus-visible {
   border-radius: 8px;
   display: grid;
   gap: 12px;
-  grid-template-columns: minmax(220px, 1fr) 120px 150px 120px 120px 76px;
-  min-height: 66px;
+  grid-template-columns: minmax(300px, 1fr) 132px 142px 120px 120px 76px;
+  min-height: 72px;
   padding: 10px 12px;
 }
 
@@ -3165,28 +3169,83 @@ button:focus-visible {
   flex: 0 0 auto;
 }
 
-.income-source div {
+.income-source > div {
   display: grid;
-  gap: 1px;
+  gap: 5px;
   min-width: 0;
 }
 
-.income-source strong {
+.income-title-row {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+  min-width: 0;
+}
+
+.income-title-row strong {
   color: var(--text);
   font-size: 14px;
-  font-weight: 650;
+  font-weight: 620;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.income-source span {
+.income-type-pill {
+  align-items: center;
+  background: color-mix(in srgb, var(--surface-soft) 80%, transparent);
+  border: 1px solid var(--border);
+  border-radius: 999px;
   color: var(--muted);
-  font-size: 12px;
-  font-weight: 500;
+  display: inline-flex;
+  flex: 0 0 auto;
+  font-size: 10px;
+  font-weight: 650;
+  height: 22px;
+  letter-spacing: 0;
+  padding: 0 8px;
+}
+
+.income-type-topstep {
+  background: color-mix(in srgb, var(--warning) 14%, var(--surface));
+  border-color: color-mix(in srgb, var(--warning) 34%, var(--border));
+  color: color-mix(in srgb, var(--warning) 82%, var(--text));
+}
+
+.income-note-tooltip {
+  flex: 0 0 auto;
+  font-size: 11px;
+  font-weight: 700;
+  height: 19px;
+  width: 19px;
+}
+
+.income-meta-strip {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  min-width: 0;
+}
+
+.income-meta-strip span {
+  background: color-mix(in srgb, var(--surface-soft) 58%, transparent);
+  border: 1px solid color-mix(in srgb, var(--border) 82%, transparent);
+  border-radius: 999px;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 560;
+  max-width: 180px;
   overflow: hidden;
+  padding: 3px 7px;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.income-meta-strip .income-meta-warning {
+  background: color-mix(in srgb, var(--danger) 11%, var(--surface));
+  border-color: color-mix(in srgb, var(--danger) 30%, var(--border));
+  color: var(--danger);
 }
 
 .income-date {
@@ -3215,7 +3274,7 @@ button:focus-visible {
 .income-net strong {
   color: var(--text);
   font-size: 14px;
-  font-weight: 650;
+  font-weight: 620;
   white-space: nowrap;
 }
 
@@ -5599,6 +5658,10 @@ button:focus-visible {
     grid-template-columns: 1fr;
   }
 
+  .income-summary-strip {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
   .finance-kpi-grid,
   .finance-simple-metrics,
   .priority-exposure-grid,
@@ -5630,7 +5693,7 @@ button:focus-visible {
   }
 
   .income-line {
-    grid-template-columns: minmax(220px, 1fr) 110px 132px 110px 110px 72px;
+    grid-template-columns: minmax(280px, 1fr) 118px 132px 108px 108px 72px;
   }
 
   .payment-line {
@@ -5696,6 +5759,7 @@ button:focus-visible {
   .form-grid.two,
   .stat-grid,
   .next-panel,
+  .income-summary-strip,
   .payments-page .summary-strip,
   .topstep-payout-preview,
   .account-grid,
@@ -5820,7 +5884,7 @@ button:focus-visible {
 
   .income-line .table-actions {
     grid-column: 2;
-    grid-row: 1 / 4;
+    grid-row: 1 / 6;
   }
 
   .payment-line {
