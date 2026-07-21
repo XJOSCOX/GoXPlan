@@ -20,6 +20,7 @@ import {
   listIncome,
   listDebts,
   listNegotiations,
+  listPayoffMilestones,
   listPayments,
   loginUser,
   openDatabase,
@@ -30,6 +31,7 @@ import {
   upsertFinancialAccount,
   upsertIncome,
   upsertNegotiation,
+  upsertPayoffMilestone,
   upsertPayoffSettings,
   upsertPayment,
   upsertUser,
@@ -47,6 +49,7 @@ import { IncomePage } from "./features/income/IncomePage";
 import { NegotiationsPage } from "./features/negotiations/NegotiationsPage";
 import { PayoffPlanPage } from "./features/payoff/PayoffPlanPage";
 import { PaymentsPage } from "./features/payments/PaymentsPage";
+import { buildPayoffPeriodProgress } from "./lib/payoffPeriods";
 import { ReportsPage } from "./features/reports/ReportsPage";
 import { getInitialTheme, saveTheme, type Theme } from "./theme/theme";
 import type {
@@ -64,6 +67,7 @@ import type {
   NegotiationInput,
   Payment,
   PaymentInput,
+  PayoffMilestone,
   PayoffSettings,
   PayoffSettingsInput,
   PublicUser,
@@ -94,6 +98,30 @@ const pagePaths: Record<AppPage, string> = {
   backup: "/backup",
 };
 
+async function syncPayoffMilestoneFromRecords(
+  database: Database,
+  userId: string,
+  settings: PayoffSettings,
+  payments: Payment[],
+  referenceDate?: string,
+) {
+  if (settings.monthlyBudgetCents <= 0) return;
+  const progress = buildPayoffPeriodProgress(
+    settings.budgetFrequency,
+    settings.monthlyBudgetCents,
+    payments,
+    referenceDate ? new Date(referenceDate) : new Date(),
+  );
+
+  await upsertPayoffMilestone(database, userId, {
+    budgetFrequency: progress.budgetFrequency,
+    paidCents: progress.paidCents,
+    periodEnd: progress.periodEnd,
+    periodStart: progress.periodStart,
+    targetCents: progress.targetCents,
+  });
+}
+
 type ConfirmDialogState = {
   confirmLabel: string;
   message: string;
@@ -114,6 +142,7 @@ export function App() {
   const [negotiations, setNegotiations] = useState<Negotiation[]>([]);
   const [payments, setPayments] = useState<Payment[]>([]);
   const [paymentDraft, setPaymentDraft] = useState<PaymentInput>();
+  const [payoffMilestones, setPayoffMilestones] = useState<PayoffMilestone[]>([]);
   const [payoffSettings, setPayoffSettings] = useState<PayoffSettings>(emptyPayoffSettings);
   const [payoffHasUnsavedChanges, setPayoffHasUnsavedChanges] = useState(false);
   const [theme, setTheme] = useState<Theme>(() => getInitialTheme());
@@ -148,8 +177,12 @@ export function App() {
           setAccountMovements(listAccountMovements(database, sessionUser.id));
           setIncome(listIncome(database, sessionUser.id));
           setNegotiations(listNegotiations(database, sessionUser.id));
-          setPayments(listPayments(database, sessionUser.id));
-          setPayoffSettings(getPayoffSettings(database, sessionUser.id));
+          const sessionPayments = listPayments(database, sessionUser.id);
+          const sessionPayoffSettings = getPayoffSettings(database, sessionUser.id);
+          await syncPayoffMilestoneFromRecords(database, sessionUser.id, sessionPayoffSettings, sessionPayments);
+          setPayments(sessionPayments);
+          setPayoffSettings(sessionPayoffSettings);
+          setPayoffMilestones(listPayoffMilestones(database, sessionUser.id));
           if (window.location.pathname === "/auth" || !getPageFromPath()) {
             replaceUrl(routePage);
           }
@@ -199,6 +232,7 @@ export function App() {
     setNegotiations(listNegotiations(db, nextUser.id));
     setPayments(listPayments(db, nextUser.id));
     setPayoffSettings(getPayoffSettings(db, nextUser.id));
+    setPayoffMilestones(listPayoffMilestones(db, nextUser.id));
     return nextUser;
   }
 
@@ -216,6 +250,7 @@ export function App() {
     setNegotiations(listNegotiations(db, nextUser.id));
     setPayments(listPayments(db, nextUser.id));
     setPayoffSettings(getPayoffSettings(db, nextUser.id));
+    setPayoffMilestones(listPayoffMilestones(db, nextUser.id));
     return nextUser;
   }
 
@@ -239,6 +274,7 @@ export function App() {
     setIncome([]);
     setNegotiations([]);
     setPayments([]);
+    setPayoffMilestones([]);
     setPayoffSettings(emptyPayoffSettings);
     setStats(emptyStats);
     window.history.replaceState(null, "", "/auth");
@@ -435,25 +471,42 @@ export function App() {
 
   async function handleSavePayment(input: PaymentInput) {
     if (!db || !user) throw new Error("GoXPlan is still starting. Please try again.");
-    await upsertPayment(db, user.id, input);
+    const previousPayment = input.id ? payments.find((payment) => payment.id === input.id) : undefined;
+    const savedPayment = await upsertPayment(db, user.id, input);
+    const nextPayments = listPayments(db, user.id);
+    const nextPayoffSettings = getPayoffSettings(db, user.id);
+    await syncPayoffMilestoneFromRecords(db, user.id, nextPayoffSettings, nextPayments, savedPayment.paidAt);
+    if (previousPayment?.paidAt && previousPayment.paidAt !== savedPayment.paidAt) {
+      await syncPayoffMilestoneFromRecords(db, user.id, nextPayoffSettings, nextPayments, previousPayment.paidAt);
+    }
     setDebts(listDebts(db, user.id));
     setFinancialAccounts(listFinancialAccounts(db, user.id));
-    setPayments(listPayments(db, user.id));
+    setPayments(nextPayments);
+    setPayoffMilestones(listPayoffMilestones(db, user.id));
     setStats(getDashboardStats(db, user.id));
   }
 
   async function handleDeletePayment(paymentId: string) {
     if (!db || !user) throw new Error("GoXPlan is still starting. Please try again.");
+    const removedPayment = payments.find((payment) => payment.id === paymentId);
     await deletePayment(db, user.id, paymentId);
+    const nextPayments = listPayments(db, user.id);
+    const nextPayoffSettings = getPayoffSettings(db, user.id);
+    await syncPayoffMilestoneFromRecords(db, user.id, nextPayoffSettings, nextPayments, removedPayment?.paidAt);
     setDebts(listDebts(db, user.id));
     setFinancialAccounts(listFinancialAccounts(db, user.id));
-    setPayments(listPayments(db, user.id));
+    setPayments(nextPayments);
+    setPayoffMilestones(listPayoffMilestones(db, user.id));
     setStats(getDashboardStats(db, user.id));
   }
 
   async function handleSavePayoffSettings(input: PayoffSettingsInput) {
     if (!db || !user) throw new Error("GoXPlan is still starting. Please try again.");
-    setPayoffSettings(await upsertPayoffSettings(db, user.id, input));
+    const nextPayoffSettings = await upsertPayoffSettings(db, user.id, input);
+    const nextPayments = listPayments(db, user.id);
+    await syncPayoffMilestoneFromRecords(db, user.id, nextPayoffSettings, nextPayments);
+    setPayoffSettings(nextPayoffSettings);
+    setPayoffMilestones(listPayoffMilestones(db, user.id));
   }
 
   const handlePayoffDirtyChange = useCallback((isDirty: boolean) => {
@@ -489,6 +542,7 @@ export function App() {
     setIncome(listIncome(database, userId));
     setNegotiations(listNegotiations(database, userId));
     setPayments(listPayments(database, userId));
+    setPayoffMilestones(listPayoffMilestones(database, userId));
     setPayoffSettings(getPayoffSettings(database, userId));
   }
 
@@ -612,6 +666,7 @@ export function App() {
           financialAccounts={financialAccounts}
           income={income}
           negotiations={negotiations}
+          payoffMilestones={payoffMilestones}
           payments={payments}
           settings={payoffSettings}
           onOpenDebts={() => navigateToPage("debts")}
@@ -631,6 +686,8 @@ export function App() {
             income: income.length,
             negotiations: negotiations.length,
             payments: payments.length,
+            payoffMilestones: payoffMilestones.length,
+            payoffSettings: payoffSettings.userId ? 1 : 0,
           }}
           debts={debts}
           income={income}

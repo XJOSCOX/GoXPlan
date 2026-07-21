@@ -4952,6 +4952,184 @@ button:focus-visible {
   white-space: nowrap;
 }
 
+.payoff-period-card {
+  background: color-mix(in srgb, var(--surface-soft) 30%, transparent);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  display: grid;
+  gap: 11px;
+  padding: 14px;
+}
+
+.payoff-period-card.is-done {
+  border-color: color-mix(in srgb, var(--success) 38%, var(--border));
+}
+
+.payoff-period-heading {
+  align-items: center;
+  display: grid;
+  gap: 10px;
+  grid-template-columns: auto 1fr auto;
+}
+
+.payoff-period-heading svg {
+  color: var(--muted);
+}
+
+.payoff-period-heading div {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.payoff-period-heading span {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 680;
+  text-transform: uppercase;
+}
+
+.payoff-period-heading strong {
+  color: var(--text);
+  font-size: 15px;
+  font-weight: 620;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.payoff-period-heading em {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  color: var(--text);
+  font-size: 12px;
+  font-style: normal;
+  font-weight: 650;
+  padding: 5px 9px;
+  white-space: nowrap;
+}
+
+.payoff-period-card.is-done .payoff-period-heading em {
+  background: color-mix(in srgb, var(--success) 14%, var(--surface));
+  border-color: color-mix(in srgb, var(--success) 34%, var(--border));
+  color: var(--success);
+}
+
+.payoff-period-meter {
+  background: var(--surface-soft);
+  border-radius: 999px;
+  height: 8px;
+  overflow: hidden;
+}
+
+.payoff-period-meter span {
+  background: var(--surface-strong);
+  border-radius: inherit;
+  display: block;
+  height: 100%;
+}
+
+.payoff-period-card.is-done .payoff-period-meter span {
+  background: var(--success);
+}
+
+.payoff-period-values {
+  display: grid;
+  gap: 8px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.payoff-period-values span {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--muted);
+  display: grid;
+  font-size: 11px;
+  font-weight: 620;
+  gap: 3px;
+  padding: 8px 9px;
+}
+
+.payoff-period-values strong {
+  color: var(--text);
+  font-size: 14px;
+  font-weight: 650;
+}
+
+.payoff-period-card p,
+.payoff-period-card small {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 560;
+  margin: 0;
+}
+
+.payoff-milestone-list {
+  border-top: 1px solid var(--border);
+  display: grid;
+  gap: 8px;
+  padding-top: 12px;
+}
+
+.payoff-milestone-list > span {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.payoff-milestone-list article {
+  align-items: center;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  display: grid;
+  gap: 10px;
+  grid-template-columns: 1fr auto;
+  min-height: 44px;
+  padding: 9px 10px;
+}
+
+.payoff-milestone-list article div {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.payoff-milestone-list strong {
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 620;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.payoff-milestone-list em {
+  color: var(--muted);
+  font-size: 11px;
+  font-style: normal;
+  font-weight: 600;
+}
+
+.milestone-status {
+  background: var(--surface-soft);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 680;
+  padding: 5px 8px;
+}
+
+.milestone-status.done {
+  background: color-mix(in srgb, var(--success) 14%, var(--surface));
+  border-color: color-mix(in srgb, var(--success) 34%, var(--border));
+  color: var(--success);
+}
+
 .payoff-budget-panel {
   min-height: 198px;
 }

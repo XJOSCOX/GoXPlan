@@ -10,6 +10,7 @@ import {
   type PaymentSummary,
 } from "../../lib/financialSummary";
 import { buildNegotiationInsights, getNegotiationDeadlineTime, type DebtNegotiationInsight } from "../../lib/negotiationTargets";
+import { buildPayoffPeriodProgress, formatPayoffPeriodRange } from "../../lib/payoffPeriods";
 import type {
   AccountMovement,
   Debt,
@@ -20,6 +21,7 @@ import type {
   PaymentInput,
   PaymentType,
   PayoffBudgetFrequency,
+  PayoffMilestone,
   PayoffSettings,
   PayoffSettingsInput,
   PayoffStrategy,
@@ -31,6 +33,7 @@ type PayoffPlanPageProps = {
   financialAccounts: FinancialAccount[];
   income: Income[];
   negotiations: Negotiation[];
+  payoffMilestones: PayoffMilestone[];
   payments: Payment[];
   settings: PayoffSettings;
   onOpenDebts: () => void;
@@ -87,6 +90,7 @@ export function PayoffPlanPage({
   financialAccounts,
   income,
   negotiations,
+  payoffMilestones,
   payments,
   settings,
   onOpenDebts,
@@ -141,6 +145,14 @@ export function PayoffPlanPage({
   const plan = useMemo(
     () => buildPayoffPlan(debts, payments, planBudgetCents, form.strategy, draftMaxAccountsPerRound, manualAllocationCents, negotiationInsights),
     [debts, draftMaxAccountsPerRound, form.strategy, manualAllocationCents, negotiationInsights, payments, planBudgetCents],
+  );
+  const activePeriodProgress = useMemo(
+    () => buildPayoffPeriodProgress(form.budgetFrequency, planBudgetCents, payments),
+    [form.budgetFrequency, payments, planBudgetCents],
+  );
+  const recentMilestones = useMemo(
+    () => payoffMilestones.filter((milestone) => milestone.targetCents > 0).slice(0, 3),
+    [payoffMilestones],
   );
 
   const recommendationDebts = plan.planDebts.filter((debt) => debt.allocationCents > 0 || hasManualAllocation(form.manualAllocations, debt.id));
@@ -261,6 +273,34 @@ export function PayoffPlanPage({
             </div>
           </section>
 
+          <section className={activePeriodProgress.isDone ? "payoff-period-card is-done" : "payoff-period-card"}>
+            <div className="payoff-period-heading">
+              <CalendarClock size={17} />
+              <div>
+                <span>{activePeriodProgress.label}</span>
+                <strong>{formatPayoffPeriodRange(activePeriodProgress.periodStart, activePeriodProgress.periodEnd)}</strong>
+              </div>
+              <em>{activePeriodProgress.isDone ? "Done" : `${activePeriodProgress.paidPercent}%`}</em>
+            </div>
+            <div className="payoff-period-meter" aria-label={`${activePeriodProgress.paidPercent}% of period budget paid`}>
+              <span style={{ width: `${activePeriodProgress.paidPercent}%` }} />
+            </div>
+            <div className="payoff-period-values">
+              <span>
+                Paid <strong>{formatCurrency(activePeriodProgress.paidCents)}</strong>
+              </span>
+              <span>
+                Goal <strong>{formatCurrency(activePeriodProgress.targetCents)}</strong>
+              </span>
+            </div>
+            <p>
+              {activePeriodProgress.isDone
+                ? "Goal met for this period."
+                : `${formatCurrency(activePeriodProgress.remainingCents)} left to finish this period.`}
+            </p>
+            {form.budgetFrequency === "WEEKLY" && <small>Weeks run Sunday through Saturday.</small>}
+          </section>
+
           <section className="payoff-rules-panel">
             <div className="payoff-panel-heading">
               <Shield size={18} />
@@ -368,6 +408,23 @@ export function PayoffPlanPage({
               <strong>{formatCurrency(financialSummary.possibleSettlementSavingsCents)}</strong>
             </div>
           </div>
+
+          {recentMilestones.length > 0 && (
+            <section className="payoff-milestone-list">
+              <span>Milestones</span>
+              {recentMilestones.map((milestone) => (
+                <article key={milestone.id}>
+                  <div>
+                    <strong>{formatPayoffPeriodRange(milestone.periodStart, milestone.periodEnd)}</strong>
+                    <em>{budgetFrequencyLabels[milestone.budgetFrequency]}</em>
+                  </div>
+                  <span className={milestone.status === "DONE" ? "milestone-status done" : "milestone-status"}>
+                    {milestone.status === "DONE" ? "Done" : `${getPercent(milestone.paidCents, milestone.targetCents)}%`}
+                  </span>
+                </article>
+              ))}
+            </section>
+          )}
         </aside>
 
         <div className="payoff-workspace-main">
@@ -869,6 +926,10 @@ function parseMaxAccountsInput(value: string) {
 
 function centsToInput(cents: number) {
   return cents ? (cents / 100).toFixed(2) : "";
+}
+
+function getPercent(valueCents: number, targetCents: number) {
+  return targetCents > 0 ? Math.min(100, Math.round((valueCents / targetCents) * 100)) : 0;
 }
 
 function toDateInput(value: string) {

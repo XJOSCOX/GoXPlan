@@ -322,6 +322,7 @@ export type PayoffStrategy =
   | "SETTLEMENT";
 
 export type PayoffBudgetFrequency = "WEEKLY" | "MONTHLY" | "YEARLY";
+export type PayoffMilestoneStatus = "ACTIVE" | "DONE";
 
 export type PayoffSettings = {
   userId: string;
@@ -341,4 +342,26 @@ export type PayoffSettingsInput = {
   maxAccountsPerRound: string;
   manualAllocations: Record<string, string>;
   strategy: PayoffStrategy;
+};
+
+export type PayoffMilestone = {
+  id: string;
+  userId: string;
+  budgetFrequency: PayoffBudgetFrequency;
+  periodStart: string;
+  periodEnd: string;
+  targetCents: number;
+  paidCents: number;
+  status: PayoffMilestoneStatus;
+  completedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type PayoffMilestoneInput = {
+  budgetFrequency: PayoffBudgetFrequency;
+  periodStart: string;
+  periodEnd: string;
+  targetCents: number;
+  paidCents: number;
 };

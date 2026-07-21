@@ -12,17 +12,20 @@ import {
   listAccountMovements,
   listDebts,
   listFinancialAccounts,
+  listPayoffMilestones,
   listPayments,
   setDatabaseWriterForTesting,
   upsertAccountMovement,
   upsertDebt,
   upsertFinancialAccount,
   upsertIncome,
+  upsertPayoffMilestone,
   upsertPayoffSettings,
   upsertPayment,
 } from "../../src/db/localDatabase";
 import { buildPayoffPlan } from "../../src/features/payoff/PayoffPlanPage";
 import { buildFinancialSummary } from "../../src/lib/financialSummary";
+import { buildPayoffPeriodProgress } from "../../src/lib/payoffPeriods";
 import type { AccountMovementInput, DebtInput, FinancialAccountInput, IncomeInput, PaymentInput } from "../../src/types";
 
 const userId = "stability-user";
@@ -497,6 +500,53 @@ describe("local database stability", () => {
     expect(plan.manualAllocationCents).toBe(70000);
     expect(plan.remainingBudgetCents).toBe(-20000);
     expect(plan.isOverBudget).toBe(true);
+  });
+
+  test("tracks a weekly payoff goal from Sunday through Saturday and backs up the milestone", async () => {
+    const debt = await upsertDebt(db, userId, debtInput({ balance: "1000", creditorName: "Weekly debt" }));
+    await upsertPayoffSettings(db, userId, {
+      budgetFrequency: "WEEKLY",
+      emergencyReserve: "",
+      manualAllocations: {},
+      maxAccountsPerRound: "",
+      monthlyBudget: "100",
+      strategy: "PRIORITY",
+    });
+    await upsertPayment(db, userId, paymentInput({ amount: "100", debtId: debt.id, paidDate: "2026-07-22", resultingBalance: "900" }));
+
+    const settings = getPayoffSettings(db, userId);
+    const progress = buildPayoffPeriodProgress(settings.budgetFrequency, settings.monthlyBudgetCents, listPayments(db, userId), new Date("2026-07-23T12:00:00.000Z"));
+    expect(progress).toMatchObject({
+      isDone: true,
+      paidCents: 10000,
+      periodEnd: "2026-07-25",
+      periodStart: "2026-07-19",
+      targetCents: 10000,
+    });
+
+    await upsertPayoffMilestone(db, userId, progress);
+    expect(listPayoffMilestones(db, userId)[0]).toMatchObject({
+      budgetFrequency: "WEEKLY",
+      paidCents: 10000,
+      periodEnd: "2026-07-25",
+      periodStart: "2026-07-19",
+      status: "DONE",
+      targetCents: 10000,
+    });
+
+    const backup = exportUserBackup(db, userId);
+    expect(getBackupPreview(backup).counts.payoffMilestones).toBe(1);
+
+    const targetDb = createSeededDatabase();
+    try {
+      await importUserBackup(targetDb, userId, backup, "REPLACE");
+      expect(listPayoffMilestones(targetDb, userId)[0]).toMatchObject({
+        periodStart: "2026-07-19",
+        status: "DONE",
+      });
+    } finally {
+      targetDb.close();
+    }
   });
 });
 

@@ -15,6 +15,8 @@ type BackupPageProps = {
     income: number;
     negotiations: number;
     payments: number;
+    payoffMilestones: number;
+    payoffSettings: number;
   };
   debts: Debt[];
   income: Income[];
@@ -173,6 +175,7 @@ export function BackupPage({ accountMovements, accounts, counts, debts, income, 
           <SummaryValue label="Income" value={counts.income} />
           <SummaryValue label="Negotiations" value={counts.negotiations} />
           <SummaryValue label="Payments" value={counts.payments} />
+          <SummaryValue label="Milestones" value={counts.payoffMilestones} />
         </div>
       </section>
 
@@ -264,6 +267,7 @@ export function BackupPage({ accountMovements, accounts, counts, debts, income, 
               <PreviewCount label="Income" value={selectedPreview.counts.income} />
               <PreviewCount label="Negotiations" value={selectedPreview.counts.negotiations} />
               <PreviewCount label="Payments" value={selectedPreview.counts.payments} />
+              <PreviewCount label="Milestones" value={selectedPreview.counts.payoffMilestones} />
               <PreviewCount label="Plan" value={selectedPreview.counts.payoffSettings} />
             </div>
             <div className="backup-preview-details" aria-label="Backup coverage">
@@ -344,7 +348,7 @@ function BackupDetail({ label }: { label: string }) {
 }
 
 function hasAnyRecords(counts: BackupPageProps["counts"]) {
-  return counts.accounts + counts.accountMovements + counts.debts + counts.income + counts.negotiations + counts.payments > 0;
+  return counts.accounts + counts.accountMovements + counts.debts + counts.income + counts.negotiations + counts.payments + counts.payoffMilestones > 0;
 }
 
 function debtsToCsv(debts: Debt[]) {
@@ -650,7 +654,7 @@ function formatDateTime(value: string) {
 function formatImportSummary(summary: BackupImportSummary, safetySnapshotCreated: boolean) {
   const action = summary.mode === "REPLACE" ? "Backup restored" : "Backup merged";
   const counts = summary.counts;
-  const details = `${counts.debts} debts, ${counts.accounts} accounts, ${counts.accountMovements} movements, ${counts.income} income records, ${counts.negotiations} negotiations, ${counts.payments} payments`;
+  const details = `${counts.debts} debts, ${counts.accounts} accounts, ${counts.accountMovements} movements, ${counts.income} income records, ${counts.negotiations} negotiations, ${counts.payments} payments, ${counts.payoffMilestones} milestones`;
   return safetySnapshotCreated ? `${action}. Safety snapshot downloaded. Imported ${details}.` : `${action}. Imported ${details}.`;
 }
 

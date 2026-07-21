@@ -24,6 +24,9 @@ import type {
   Payment,
   PaymentInput,
   PaymentType,
+  PayoffMilestone,
+  PayoffMilestoneInput,
+  PayoffMilestoneStatus,
   PayoffSettings,
   PayoffBudgetFrequency,
   PayoffSettingsInput,
@@ -181,11 +184,42 @@ const backupTables = {
     "strategy",
     "updated_at",
   ],
+  payoff_milestones: [
+    "id",
+    "user_id",
+    "budget_frequency",
+    "period_start",
+    "period_end",
+    "target_cents",
+    "paid_cents",
+    "status",
+    "completed_at",
+    "created_at",
+    "updated_at",
+  ],
 } as const;
 
 const backupTableNames = Object.keys(backupTables) as BackupTableName[];
-const backupImportOrder: BackupTableName[] = ["financial_accounts", "account_movements", "debts", "income", "negotiations", "payments", "payoff_settings"];
-const backupDeleteOrder: BackupTableName[] = ["payments", "negotiations", "income", "account_movements", "payoff_settings", "debts", "financial_accounts"];
+const backupImportOrder: BackupTableName[] = [
+  "financial_accounts",
+  "account_movements",
+  "debts",
+  "income",
+  "negotiations",
+  "payments",
+  "payoff_settings",
+  "payoff_milestones",
+];
+const backupDeleteOrder: BackupTableName[] = [
+  "payoff_milestones",
+  "payments",
+  "negotiations",
+  "income",
+  "account_movements",
+  "payoff_settings",
+  "debts",
+  "financial_accounts",
+];
 
 type BackupTableName = keyof typeof backupTables;
 type BackupTable = {
@@ -202,6 +236,7 @@ export type BackupRecordCounts = {
   income: number;
   negotiations: number;
   payments: number;
+  payoffMilestones: number;
   payoffSettings: number;
 };
 
@@ -518,6 +553,20 @@ export function getPayoffSettings(db: Database, userId: string): PayoffSettings 
         strategy: "HYBRID",
         updatedAt: new Date().toISOString(),
       };
+}
+
+export function listPayoffMilestones(db: Database, userId: string): PayoffMilestone[] {
+  const result = db.exec(
+    `
+      SELECT id, user_id, budget_frequency, period_start, period_end, target_cents, paid_cents, status, completed_at, created_at, updated_at
+      FROM payoff_milestones
+      WHERE user_id = ?
+      ORDER BY period_start DESC, updated_at DESC
+    `,
+    [userId],
+  );
+
+  return (result[0]?.values ?? []).map(toPayoffMilestone);
 }
 
 export function exportUserBackup(db: Database, userId: string): GoXPlanBackup {
@@ -1126,6 +1175,40 @@ export async function upsertPayoffSettings(db: Database, userId: string, input: 
   return getPayoffSettings(db, userId);
 }
 
+export async function upsertPayoffMilestone(db: Database, userId: string, input: PayoffMilestoneInput) {
+  const now = new Date().toISOString();
+  const targetCents = Math.max(0, Math.round(input.targetCents));
+  const paidCents = Math.max(0, Math.round(input.paidCents));
+  const status: PayoffMilestoneStatus = targetCents > 0 && paidCents >= targetCents ? "DONE" : "ACTIVE";
+  const completedAt = status === "DONE" ? now : null;
+  const budgetFrequency = normalizePayoffBudgetFrequency(input.budgetFrequency);
+  const periodStart = normalizeDateKey(input.periodStart, "Period start");
+  const periodEnd = normalizeDateKey(input.periodEnd, "Period end");
+
+  if (periodEnd < periodStart) throw new Error("Period end must be after period start.");
+
+  db.run(
+    `
+      INSERT INTO payoff_milestones (
+        id, user_id, budget_frequency, period_start, period_end, target_cents, paid_cents, status, completed_at, created_at, updated_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ON CONFLICT(user_id, budget_frequency, period_start, period_end) DO UPDATE SET
+        target_cents = excluded.target_cents,
+        paid_cents = excluded.paid_cents,
+        status = excluded.status,
+        completed_at = CASE
+          WHEN excluded.status = 'DONE' THEN COALESCE(payoff_milestones.completed_at, excluded.completed_at)
+          ELSE NULL
+        END,
+        updated_at = excluded.updated_at
+    `,
+    [crypto.randomUUID(), userId, budgetFrequency, periodStart, periodEnd, targetCents, paidCents, status, completedAt, now, now],
+  );
+
+  await saveDatabase(db);
+  return findPayoffMilestone(db, userId, budgetFrequency, periodStart, periodEnd)!;
+}
+
 function normalizeBackupPayload(input: unknown): GoXPlanBackup {
   if (!isRecord(input) || input.app !== "GoXPlan" || input.version !== 1 || !isRecord(input.tables)) {
     throw new Error("This backup file does not look like a GoXPlan backup.");
@@ -1203,6 +1286,7 @@ function getBackupCounts(backup: GoXPlanBackup): BackupRecordCounts {
     income: backup.tables.income.rows.length,
     negotiations: backup.tables.negotiations.rows.length,
     payments: backup.tables.payments.rows.length,
+    payoffMilestones: backup.tables.payoff_milestones.rows.length,
     payoffSettings: backup.tables.payoff_settings.rows.length,
   };
 }
@@ -1232,17 +1316,22 @@ function getBackupDetails(backup: GoXPlanBackup): BackupPreview["details"] {
 }
 
 function upsertBackupRow(db: Database, userId: string, tableName: BackupTableName, columns: string[], row: unknown[]) {
-  const primaryKey = tableName === "payoff_settings" ? "user_id" : "id";
+  const conflictColumns =
+    tableName === "payoff_settings"
+      ? ["user_id"]
+      : tableName === "payoff_milestones"
+        ? ["user_id", "budget_frequency", "period_start", "period_end"]
+        : ["id"];
   const values = sanitizeBackupRow(db, userId, tableName, columns, row);
   const placeholders = columns.map(() => "?").join(", ");
-  const updateColumns = columns.filter((column) => column !== primaryKey);
+  const updateColumns = columns.filter((column) => !conflictColumns.includes(column) && !(tableName === "payoff_milestones" && column === "id"));
   const updateClause = updateColumns.map((column) => `${column} = excluded.${column}`).join(", ");
 
   db.run(
     `
       INSERT INTO ${tableName} (${columns.join(", ")})
       VALUES (${placeholders})
-      ON CONFLICT(${primaryKey}) DO UPDATE SET ${updateClause}
+      ON CONFLICT(${conflictColumns.join(", ")}) DO UPDATE SET ${updateClause}
     `,
     values,
   );
@@ -1316,6 +1405,11 @@ function sanitizeBackupRow(db: Database, userId: string, tableName: BackupTableN
   if (tableName === "payoff_settings") {
     sanitizeStringEnumValue(values, columns, "strategy", normalizePayoffStrategy, "HYBRID");
     sanitizeStringEnumValue(values, columns, "budget_frequency", normalizePayoffBudgetFrequency, "MONTHLY");
+  }
+
+  if (tableName === "payoff_milestones") {
+    sanitizeStringEnumValue(values, columns, "budget_frequency", normalizePayoffBudgetFrequency, "MONTHLY");
+    sanitizeStringEnumValue(values, columns, "status", normalizePayoffMilestoneStatus, "ACTIVE");
   }
 
   return values;
@@ -1484,6 +1578,25 @@ function findPaymentById(db: Database, userId: string, paymentId: string) {
   );
   const row = result[0]?.values[0];
   return row ? toPayment(row) : undefined;
+}
+
+function findPayoffMilestone(
+  db: Database,
+  userId: string,
+  budgetFrequency: PayoffBudgetFrequency,
+  periodStart: string,
+  periodEnd: string,
+) {
+  const result = db.exec(
+    `
+      SELECT id, user_id, budget_frequency, period_start, period_end, target_cents, paid_cents, status, completed_at, created_at, updated_at
+      FROM payoff_milestones
+      WHERE user_id = ? AND budget_frequency = ? AND period_start = ? AND period_end = ?
+    `,
+    [userId, budgetFrequency, periodStart, periodEnd],
+  );
+  const row = result[0]?.values[0];
+  return row ? toPayoffMilestone(row) : undefined;
 }
 
 function findPaymentDebtSnapshot(db: Database, userId: string, paymentId: string) {
@@ -1742,6 +1855,22 @@ function toPayoffSettings(row: unknown[]): PayoffSettings {
   };
 }
 
+function toPayoffMilestone(row: unknown[]): PayoffMilestone {
+  return {
+    id: String(row[0]),
+    userId: String(row[1]),
+    budgetFrequency: normalizePayoffBudgetFrequency(String(row[2] ?? "MONTHLY")),
+    periodStart: String(row[3]),
+    periodEnd: String(row[4]),
+    targetCents: Number(row[5]),
+    paidCents: Number(row[6]),
+    status: normalizePayoffMilestoneStatus(String(row[7] ?? "ACTIVE")),
+    completedAt: row[8] === null || row[8] === undefined ? null : String(row[8]),
+    createdAt: String(row[9]),
+    updatedAt: String(row[10]),
+  };
+}
+
 function normalizePriorityScore(value: number) {
   if (!Number.isFinite(value)) return 0;
   return Math.max(0, Math.round(value));
@@ -1799,6 +1928,16 @@ function normalizePayoffStrategy(value: string): PayoffStrategy {
 function normalizePayoffBudgetFrequency(value: string): PayoffBudgetFrequency {
   if (value === "WEEKLY" || value === "YEARLY") return value;
   return "MONTHLY";
+}
+
+function normalizePayoffMilestoneStatus(value: string): PayoffMilestoneStatus {
+  return value === "DONE" ? "DONE" : "ACTIVE";
+}
+
+function normalizeDateKey(value: string, label: string) {
+  const cleanDate = value.trim();
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(cleanDate)) throw new Error(`${label} must use YYYY-MM-DD.`);
+  return cleanDate;
 }
 
 function parseManualAllocationInput(input: Record<string, string>) {
@@ -2518,6 +2657,21 @@ const schema = `
     updated_at TEXT NOT NULL
   );
 
+  CREATE TABLE IF NOT EXISTS payoff_milestones (
+    id TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    budget_frequency TEXT NOT NULL DEFAULT 'MONTHLY',
+    period_start TEXT NOT NULL,
+    period_end TEXT NOT NULL,
+    target_cents INTEGER NOT NULL DEFAULT 0,
+    paid_cents INTEGER NOT NULL DEFAULT 0,
+    status TEXT NOT NULL DEFAULT 'ACTIVE',
+    completed_at TEXT,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    UNIQUE(user_id, budget_frequency, period_start, period_end)
+  );
+
   CREATE INDEX IF NOT EXISTS idx_debts_user ON debts(user_id);
   CREATE INDEX IF NOT EXISTS idx_financial_accounts_user ON financial_accounts(user_id);
   CREATE INDEX IF NOT EXISTS idx_account_movements_user ON account_movements(user_id);
@@ -2527,4 +2681,5 @@ const schema = `
   CREATE INDEX IF NOT EXISTS idx_negotiations_user ON negotiations(user_id);
   CREATE INDEX IF NOT EXISTS idx_negotiations_debt ON negotiations(debt_id);
   CREATE INDEX IF NOT EXISTS idx_payments_user ON payments(user_id);
+  CREATE INDEX IF NOT EXISTS idx_payoff_milestones_user ON payoff_milestones(user_id);
 `;
