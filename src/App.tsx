@@ -582,6 +582,7 @@ export function App() {
         />
       ) : page === "backup" ? (
         <BackupPage
+          accounts={financialAccounts}
           counts={{
             accounts: financialAccounts.length,
             debts: debts.length,
@@ -590,8 +591,11 @@ export function App() {
             payments: payments.length,
           }}
           debts={debts}
+          income={income}
+          negotiations={negotiations}
           onExportBackup={handleExportBackup}
           onImportBackup={handleImportBackup}
+          payments={payments}
         />
       ) : (
         <DashboardPage

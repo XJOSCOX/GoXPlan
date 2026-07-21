@@ -4976,6 +4976,17 @@ button:focus-visible {
   width: 100%;
 }
 
+.backup-export-actions {
+  display: grid;
+  gap: 8px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.backup-export-actions button {
+  justify-content: center;
+  min-height: 40px;
+}
+
 .backup-dropzone {
   align-items: center;
   background:

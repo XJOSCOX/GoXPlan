@@ -2,9 +2,10 @@ import { CheckCircle2, DatabaseBackup, Download, FileJson, FileSpreadsheet, Merg
 import { useState } from "react";
 import { ConfirmDialog } from "../../components/ConfirmDialog";
 import { getBackupPreview, type BackupImportMode, type BackupImportSummary, type BackupPreview, type GoXPlanBackup } from "../../db/localDatabase";
-import type { Debt } from "../../types";
+import type { Debt, FinancialAccount, Income, Negotiation, Payment } from "../../types";
 
 type BackupPageProps = {
+  accounts: FinancialAccount[];
   counts: {
     accounts: number;
     debts: number;
@@ -13,11 +14,14 @@ type BackupPageProps = {
     payments: number;
   };
   debts: Debt[];
+  income: Income[];
+  negotiations: Negotiation[];
   onExportBackup: () => Promise<GoXPlanBackup>;
   onImportBackup: (backup: unknown, mode: BackupImportMode) => Promise<BackupImportSummary>;
+  payments: Payment[];
 };
 
-export function BackupPage({ counts, debts, onExportBackup, onImportBackup }: BackupPageProps) {
+export function BackupPage({ accounts, counts, debts, income, negotiations, onExportBackup, onImportBackup, payments }: BackupPageProps) {
   const [error, setError] = useState("");
   const [importMode, setImportMode] = useState<BackupImportMode>("MERGE");
   const [isExporting, setIsExporting] = useState(false);
@@ -49,6 +53,41 @@ export function BackupPage({ counts, debts, onExportBackup, onImportBackup }: Ba
     setSuccess("");
     downloadText(`goxplan-debts-${fileDate()}.csv`, debtsToCsv(debts), "text/csv;charset=utf-8");
     setSuccess("Debt CSV exported.");
+  }
+
+  function exportAccountsCsv() {
+    setError("");
+    setSuccess("");
+    downloadText(`goxplan-accounts-${fileDate()}.csv`, accountsToCsv(accounts), "text/csv;charset=utf-8");
+    setSuccess("Accounts CSV exported.");
+  }
+
+  function exportIncomeCsv() {
+    setError("");
+    setSuccess("");
+    downloadText(`goxplan-income-${fileDate()}.csv`, incomeToCsv(income), "text/csv;charset=utf-8");
+    setSuccess("Income CSV exported.");
+  }
+
+  function exportPaymentsCsv() {
+    setError("");
+    setSuccess("");
+    downloadText(`goxplan-payments-${fileDate()}.csv`, paymentsToCsv(payments), "text/csv;charset=utf-8");
+    setSuccess("Payments CSV exported.");
+  }
+
+  function exportNegotiationsCsv() {
+    setError("");
+    setSuccess("");
+    downloadText(`goxplan-negotiations-${fileDate()}.csv`, negotiationsToCsv(negotiations), "text/csv;charset=utf-8");
+    setSuccess("Negotiations CSV exported.");
+  }
+
+  function exportFinancialReportCsv() {
+    setError("");
+    setSuccess("");
+    downloadText(`goxplan-financial-report-${fileDate()}.csv`, financialReportToCsv({ accounts, debts, income, negotiations, payments }), "text/csv;charset=utf-8");
+    setSuccess("Financial report CSV exported.");
   }
 
   async function chooseBackupFile(file: File | undefined) {
@@ -148,14 +187,36 @@ export function BackupPage({ counts, debts, onExportBackup, onImportBackup }: Ba
           <div className="backup-card-heading">
             <FileSpreadsheet size={19} />
             <div>
-              <h2>Debt spreadsheet</h2>
-              <p>Exports the debt register as CSV for Excel or Google Sheets.</p>
+              <h2>Spreadsheet exports</h2>
+              <p>Export focused CSV files for Excel, Google Sheets, or personal review.</p>
             </div>
           </div>
-          <button className="icon-text-button backup-wide-button" type="button" onClick={exportDebtsCsv} disabled={!debts.length}>
-            <Download size={17} />
-            Export debts CSV
-          </button>
+          <div className="backup-export-actions">
+            <button className="icon-text-button" type="button" onClick={exportFinancialReportCsv} disabled={!hasAnyRecords(counts)}>
+              <Download size={16} />
+              Report
+            </button>
+            <button className="icon-text-button" type="button" onClick={exportDebtsCsv} disabled={!debts.length}>
+              <Download size={16} />
+              Debts
+            </button>
+            <button className="icon-text-button" type="button" onClick={exportAccountsCsv} disabled={!accounts.length}>
+              <Download size={16} />
+              Accounts
+            </button>
+            <button className="icon-text-button" type="button" onClick={exportIncomeCsv} disabled={!income.length}>
+              <Download size={16} />
+              Income
+            </button>
+            <button className="icon-text-button" type="button" onClick={exportPaymentsCsv} disabled={!payments.length}>
+              <Download size={16} />
+              Payments
+            </button>
+            <button className="icon-text-button" type="button" onClick={exportNegotiationsCsv} disabled={!negotiations.length}>
+              <Download size={16} />
+              Negotiations
+            </button>
+          </div>
         </article>
       </section>
 
@@ -273,6 +334,10 @@ function BackupDetail({ label }: { label: string }) {
   );
 }
 
+function hasAnyRecords(counts: BackupPageProps["counts"]) {
+  return counts.accounts + counts.debts + counts.income + counts.negotiations + counts.payments > 0;
+}
+
 function debtsToCsv(debts: Debt[]) {
   const headers = [
     "Priority",
@@ -303,7 +368,189 @@ function debtsToCsv(debts: Debt[]) {
     debt.trackedAt,
   ]);
 
-  return [headers, ...rows].map((row) => row.map(toCsvCell).join(",")).join("\n");
+  return rowsToCsv(headers, rows);
+}
+
+function accountsToCsv(accounts: FinancialAccount[]) {
+  const headers = [
+    "Name",
+    "Type",
+    "Institution",
+    "Available balance",
+    "Sub accounts",
+    "Copied",
+    "Trading profits",
+    "Payout limit %",
+    "Fee %",
+    "Notes",
+    "Updated at",
+  ];
+  const rows = accounts.map((account) => [
+    account.name,
+    account.accountType,
+    account.institution,
+    centsToDecimal(account.availableBalanceCents),
+    account.maxSubAccounts ?? "",
+    account.copiedAccounts ? "Yes" : "No",
+    account.tradingAccountProfitsCents.map(centsToDecimal).join(" | "),
+    account.payoutLimitBasisPoints === null ? "" : basisPointsToPercent(account.payoutLimitBasisPoints),
+    account.feeBasisPoints === null ? "" : basisPointsToPercent(account.feeBasisPoints),
+    account.notes,
+    account.updatedAt,
+  ]);
+
+  return rowsToCsv(headers, rows);
+}
+
+function incomeToCsv(income: Income[]) {
+  const headers = [
+    "Date",
+    "Source",
+    "Type",
+    "Account",
+    "Gross",
+    "Fees",
+    "Tax withholding",
+    "Net",
+    "Allocated",
+    "Remaining",
+    "Payout scope",
+    "Selected account",
+    "Account count",
+    "Profit per account",
+    "Total profit",
+    "Withdrawable",
+    "Notes",
+  ];
+  const rows = income.map((item) => [
+    item.receivedAt,
+    item.source,
+    item.sourceType,
+    item.accountName ?? "",
+    centsToDecimal(item.grossAmountCents),
+    centsToDecimal(item.feesCents),
+    centsToDecimal(item.taxWithholdingCents),
+    centsToDecimal(item.netAmountCents),
+    centsToDecimal(item.allocatedAmountCents),
+    centsToDecimal(item.remainingAmountCents),
+    item.topstepPayoutScope ?? "",
+    item.topstepSelectedAccount ?? "",
+    item.topstepAccountCount ?? "",
+    item.topstepProfitPerAccountCents === null ? "" : centsToDecimal(item.topstepProfitPerAccountCents),
+    item.topstepTotalProfitCents === null ? "" : centsToDecimal(item.topstepTotalProfitCents),
+    item.topstepWithdrawableCents === null ? "" : centsToDecimal(item.topstepWithdrawableCents),
+    item.notes,
+  ]);
+
+  return rowsToCsv(headers, rows);
+}
+
+function paymentsToCsv(payments: Payment[]) {
+  const headers = [
+    "Date",
+    "Debt",
+    "Type",
+    "Amount",
+    "Principal",
+    "Interest and fees",
+    "Resulting balance",
+    "Method",
+    "Confirmation",
+    "Notes",
+  ];
+  const rows = payments.map((payment) => [
+    payment.paidAt,
+    payment.debtName ?? "Removed debt",
+    payment.paymentType,
+    centsToDecimal(payment.amountCents),
+    payment.principalCents === null ? "" : centsToDecimal(payment.principalCents),
+    payment.interestAndFeesCents === null ? "" : centsToDecimal(payment.interestAndFeesCents),
+    payment.resultingBalanceCents === null ? "" : centsToDecimal(payment.resultingBalanceCents),
+    payment.paymentMethod,
+    payment.confirmationNumber,
+    payment.notes,
+  ]);
+
+  return rowsToCsv(headers, rows);
+}
+
+function negotiationsToCsv(negotiations: Negotiation[]) {
+  const headers = [
+    "Contact date",
+    "Debt",
+    "Status",
+    "Method",
+    "Representative",
+    "Phone or portal",
+    "Balance",
+    "Current offer",
+    "User offer",
+    "Counter offer",
+    "Final agreement",
+    "Payments",
+    "Due date",
+    "Written agreement",
+    "Pay for delete",
+    "Offer expires",
+    "Follow up",
+    "Notes",
+  ];
+  const rows = negotiations.map((negotiation) => [
+    negotiation.contactDate,
+    negotiation.debtName ?? "Removed debt",
+    negotiation.status,
+    negotiation.contactMethod,
+    negotiation.representative,
+    negotiation.phoneOrPortal,
+    nullableCentsToDecimal(negotiation.balanceCents),
+    nullableCentsToDecimal(negotiation.currentOfferCents),
+    nullableCentsToDecimal(negotiation.userOfferCents),
+    nullableCentsToDecimal(negotiation.counterOfferCents),
+    nullableCentsToDecimal(negotiation.finalAgreementCents),
+    negotiation.numberOfPayments ?? "",
+    negotiation.dueDate ?? "",
+    negotiation.writtenAgreementReceived ? "Yes" : "No",
+    negotiation.payForDeleteIncluded ? "Yes" : "No",
+    negotiation.offerExpiresAt ?? "",
+    negotiation.followUpAt ?? "",
+    negotiation.notes,
+  ]);
+
+  return rowsToCsv(headers, rows);
+}
+
+function financialReportToCsv(records: Pick<BackupPageProps, "accounts" | "debts" | "income" | "negotiations" | "payments">) {
+  const totalDebt = records.debts.reduce((sum, debt) => sum + debt.balanceCents, 0);
+  const currentObligations = records.debts.reduce((sum, debt) => sum + getDebtActionAmountCents(debt), 0);
+  const totalIncome = records.income.reduce((sum, item) => sum + item.netAmountCents, 0);
+  const availableCash = records.income.reduce((sum, item) => sum + item.remainingAmountCents, 0);
+  const totalPayments = records.payments.reduce((sum, payment) => sum + payment.amountCents, 0);
+  const acceptedAgreements = records.negotiations.filter((negotiation) => negotiation.status === "ACCEPTED" && negotiation.finalAgreementCents !== null);
+  const rows: CsvRow[] = [
+    ["GoXPlan financial report", fileDate()],
+    [],
+    ["Summary", "Amount"],
+    ["Current obligations", centsToDecimal(currentObligations)],
+    ["Full debt balance", centsToDecimal(totalDebt)],
+    ["Net income recorded", centsToDecimal(totalIncome)],
+    ["Available cash", centsToDecimal(availableCash)],
+    ["Payments recorded", centsToDecimal(totalPayments)],
+    ["Accepted agreements", acceptedAgreements.length],
+    [],
+    ["Debts by priority", "Amount", "Count"],
+    ...["Emergency", "Critical", "High", "Medium", "Low"].map((level) => {
+      const debtsForLevel = records.debts.filter((debt) => getLevel(debt.priorityScore) === level);
+      return [level, centsToDecimal(debtsForLevel.reduce((sum, debt) => sum + getDebtActionAmountCents(debt), 0)), debtsForLevel.length];
+    }),
+    [],
+    ["Recent payments", "Debt", "Amount", "Date"],
+    ...records.payments.slice(0, 10).map((payment) => [payment.paymentType, payment.debtName ?? "Removed debt", centsToDecimal(payment.amountCents), payment.paidAt]),
+    [],
+    ["Recent income", "Source", "Net", "Date"],
+    ...records.income.slice(0, 10).map((item) => [item.sourceType, item.source, centsToDecimal(item.netAmountCents), item.receivedAt]),
+  ];
+
+  return rows.map((row) => row.map(toCsvCell).join(",")).join("\n");
 }
 
 function getLevel(score: number) {
@@ -318,7 +565,30 @@ function centsToDecimal(cents: number) {
   return (cents / 100).toFixed(2);
 }
 
-function toCsvCell(value: string | number) {
+function nullableCentsToDecimal(cents: number | null) {
+  return cents === null ? "" : centsToDecimal(cents);
+}
+
+function basisPointsToPercent(basisPoints: number) {
+  return (basisPoints / 100).toFixed(2);
+}
+
+function getDebtActionAmountCents(debt: Debt) {
+  if (debt.settlementCents !== null) return debt.settlementCents;
+  if (debt.pastDueCents !== null) return debt.pastDueCents;
+  if (debt.minimumPaymentCents !== null) return debt.minimumPaymentCents;
+  return debt.balanceCents;
+}
+
+type CsvValue = string | number | null | undefined;
+type CsvRow = CsvValue[];
+
+function rowsToCsv(headers: string[], rows: CsvRow[]) {
+  return [headers, ...rows].map((row) => row.map(toCsvCell).join(",")).join("\n");
+}
+
+function toCsvCell(value: CsvValue) {
+  if (value === null || value === undefined) return "";
   const text = String(value);
   if (!/[",\n]/.test(text)) return text;
   return `"${text.replace(/"/g, '""')}"`;
