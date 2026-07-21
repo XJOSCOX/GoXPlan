@@ -1262,7 +1262,8 @@ button:focus-visible {
   align-items: stretch;
   display: grid;
   gap: 14px;
-  grid-template-columns: minmax(360px, 1.18fr) minmax(300px, 0.7fr) minmax(300px, 0.7fr);
+  grid-template-columns: minmax(0, 1.18fr) minmax(240px, 0.7fr) minmax(240px, 0.7fr);
+  min-width: 0;
 }
 
 .finance-balance-panel,
@@ -2068,6 +2069,7 @@ button:focus-visible {
   display: grid;
   gap: 12px;
   grid-template-columns: repeat(3, minmax(0, 1fr));
+  min-width: 0;
 }
 
 .summary-strip article {
@@ -2110,6 +2112,7 @@ button:focus-visible {
   display: grid;
   gap: 16px;
   grid-template-columns: 1fr;
+  min-width: 0;
 }
 
 .debt-form {
@@ -2192,6 +2195,7 @@ button:focus-visible {
   display: grid;
   gap: 14px;
   min-height: auto;
+  min-width: 0;
   padding: 18px;
 }
 
@@ -2968,6 +2972,7 @@ button:focus-visible {
 
 .debt-lines {
   display: grid;
+  min-width: 0;
 }
 
 .debt-line {
@@ -2976,6 +2981,7 @@ button:focus-visible {
   gap: 8px;
   grid-template-columns: 38px minmax(220px, 1fr) 116px 110px 76px minmax(150px, 0.62fr) 68px;
   min-height: 58px;
+  min-width: 0;
   padding: 8px 12px;
 }
 
@@ -7077,6 +7083,34 @@ button:focus-visible {
 
   .payoff-planner-sidebar {
     position: static;
+  }
+}
+
+@media (max-width: 1280px) {
+  .finance-overview-grid {
+    grid-template-columns: minmax(0, 1.15fr) minmax(240px, 0.75fr);
+  }
+
+  .finance-urgency-panel {
+    grid-column: 1 / -1;
+    min-height: auto;
+  }
+
+  .debt-line {
+    grid-template-columns: 36px minmax(0, 1fr) 108px 96px 72px minmax(132px, 0.55fr) 64px;
+  }
+
+  .debt-controls {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .debt-toolbar {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .debt-list-actions {
+    align-self: flex-start;
   }
 }
 
