@@ -132,15 +132,26 @@ export function PayoffPlanPage({
   const cashRemaining = planBudgetCents - allocatedNow;
   const allocationOverBudget = allocatedNow > planBudgetCents;
   const frequencyCopy = budgetFrequencyCopy[form.budgetFrequency];
+  const recommendationDebtIds = new Set(recommendationDebts.map((debt) => debt.id));
+  const futureOrderDebts = plan.planDebts.filter((debt) => !recommendationDebtIds.has(debt.id));
+  const visibleOrderDebts = futureOrderDebts.slice(0, 8);
+  const hiddenOrderCount = Math.max(0, futureOrderDebts.length - visibleOrderDebts.length);
+  const fullyFundedCount = recommendationDebts.filter((debt) => debt.targetRemainingAfterAllocationCents === 0).length;
+  const partiallyFundedCount = recommendationDebts.filter((debt) => debt.allocationCents > 0 && debt.targetRemainingAfterAllocationCents > 0).length;
+  const recommendedCopy = hasRecommendedPayments
+    ? `${fullyFundedCount} clear, ${partiallyFundedCount} partial ${frequencyCopy.thisPeriod}.`
+    : "Ready after a budget or available cash.";
+  const budgetValidation = getBudgetValidationMessage(form);
   const allocationWarning = allocationOverBudget
     ? `Allocations are ${formatCurrency(allocatedNow - planBudgetCents)} above the ${budgetFrequencyLabels[form.budgetFrequency].toLowerCase()} budget.`
     : "";
   const budgetWarning =
-    incomeTotals.available < 0
+    budgetValidation ||
+    (incomeTotals.available < 0
       ? `Income is overassigned by ${formatCurrency(Math.abs(incomeTotals.available))}.`
       : draftBudgetCents > safeAvailableCash
         ? `Manual budget is ${formatCurrency(draftBudgetCents - safeAvailableCash)} above safe cash. Keep it if you are funding payments another way.`
-        : "";
+        : "");
 
   function focusBudgetField() {
     document.getElementById("payoff-debt-budget")?.focus();
@@ -171,6 +182,13 @@ export function PayoffPlanPage({
     event.preventDefault();
     if (!hasUnsavedChanges || isSaving) return;
     setError("");
+
+    const validationMessage = getBudgetValidationMessage(form);
+    if (validationMessage) {
+      setError(validationMessage);
+      return;
+    }
+
     setIsSaving(true);
 
     try {
@@ -210,11 +228,20 @@ export function PayoffPlanPage({
               <Target size={18} />
               <div>
                 <h2>Planner</h2>
-                <p>Budget, next move, and cash check.</p>
+                <p>{budgetFrequencyLabels[form.budgetFrequency]} budget and cash check.</p>
               </div>
             </div>
             <span className={hasUnsavedChanges ? "count-pill unsaved-pill" : "count-pill"}>{hasUnsavedChanges ? "Unsaved changes" : `${plan.planDebts.length}`}</span>
           </div>
+
+          <section className="payoff-plan-summary">
+            <span>{budgetFrequencyLabels[form.budgetFrequency]} plan</span>
+            <strong>{formatCurrency(planBudgetCents)}</strong>
+            <div>
+              <em>{formatCurrency(allocatedNow)} recommended</em>
+              <em className={cashRemaining < 0 ? "warning-text" : ""}>{formatCurrency(cashRemaining)} left</em>
+            </div>
+          </section>
 
           <section className="payoff-rules-panel">
             <div className="payoff-panel-heading">
@@ -227,11 +254,11 @@ export function PayoffPlanPage({
 
             <form className="payoff-settings-form" onSubmit={submit}>
               <label className="field-block">
-                Debt budget
+                Debt budget ({frequencyCopy.thisPeriod})
                 <input
                   id="payoff-debt-budget"
                   inputMode="decimal"
-                  placeholder="Auto"
+                  placeholder={safeAvailableCash > 0 ? centsToInput(safeAvailableCash) : "0.00"}
                   value={form.monthlyBudget}
                   onChange={(event) => setForm({ ...form, monthlyBudget: event.target.value })}
                 />
@@ -272,6 +299,10 @@ export function PayoffPlanPage({
                 />
               </label>
 
+              <p className="field-hint">
+                Leave budget blank to use safe cash, or enter what you want to pay {frequencyCopy.thisPeriod}.
+              </p>
+
               <label className="field-block">
                 Strategy
                 <select value={form.strategy} onChange={(event) => setForm({ ...form, strategy: event.target.value as PayoffStrategy })}>
@@ -307,7 +338,7 @@ export function PayoffPlanPage({
           <div className="payoff-mini-cash">
               <div>
                 <CalendarClock size={16} />
-                <span>Available</span>
+                <span>Available cash</span>
                 <strong>{formatCurrency(incomeTotals.available)}</strong>
               </div>
               <div>
@@ -328,7 +359,7 @@ export function PayoffPlanPage({
               <Route size={18} />
               <div>
                 <h2>Recommended payments</h2>
-                <p>{hasRecommendedPayments ? `${strategyLabels[form.strategy]} allocation` : "Ready after a budget or available cash."}</p>
+                <p>{recommendedCopy}</p>
               </div>
             </div>
             {planBudgetCents > 0 && <span className={allocationOverBudget ? "count-pill danger-pill" : "count-pill"}>{allocationOverBudget ? `${formatCurrency(allocatedNow - planBudgetCents)} over` : `${formatCurrency(cashRemaining)} left`}</span>}
@@ -406,26 +437,27 @@ export function PayoffPlanPage({
           </section>
 
           <section className="panel payoff-order-panel">
-        <div className="payoff-toolbar">
+          <div className="payoff-toolbar">
           <div className="payoff-panel-heading">
             <Route size={18} />
             <div>
               <h2>Payoff order</h2>
-              <p>{plan.planDebts.length ? `${strategyLabels[form.strategy]} sequence` : "Add debts to create a plan."}</p>
+              <p>{visibleOrderDebts.length ? `Next after this ${frequencyCopy.singular.toLowerCase()}.` : "The current recommendation covers the active queue."}</p>
             </div>
           </div>
           <span className="count-pill">{formatPeriodEstimate(plan.estimatedMonths, form.budgetFrequency)}</span>
         </div>
 
-        {plan.planDebts.length ? (
+        {visibleOrderDebts.length ? (
           <div className="payoff-order-list">
-            {plan.planDebts.slice(0, 10).map((debt, index) => {
+            {visibleOrderDebts.map((debt, index) => {
               const level = getDebtPriorityLevel(debt.priorityScore);
               const paidPercent = debt.fullRemainingCents + debt.paidCents > 0 ? Math.min(100, Math.round((debt.paidCents / (debt.fullRemainingCents + debt.paidCents)) * 100)) : 0;
+              const planIndex = plan.planDebts.findIndex((item) => item.id === debt.id);
 
               return (
                 <article className="payoff-order-row" key={debt.id}>
-                  <span className="payoff-rank">{index + 1}</span>
+                  <span className="payoff-rank">{planIndex + 1 || index + 1}</span>
                   <div className="payoff-row-title">
                     <strong>{debt.creditorName}</strong>
                     <span>
@@ -444,11 +476,16 @@ export function PayoffPlanPage({
                 </article>
               );
             })}
+            {hiddenOrderCount > 0 && (
+              <div className="payoff-order-more">
+                <span>{hiddenOrderCount} more debt{hiddenOrderCount === 1 ? "" : "s"} remain after this view.</span>
+              </div>
+            )}
           </div>
         ) : (
           <div className="empty-state payoff-empty-state">
-            <strong>No active debts in the plan yet.</strong>
-            <span>Add debts first, then come back here to choose a payoff budget.</span>
+            <strong>{plan.planDebts.length ? "Current queue is funded." : "No active debts in the plan yet."}</strong>
+            <span>{plan.planDebts.length ? "Use the recommended payments above, then record payments to refresh this order." : "Add debts first, then come back here to choose a payoff budget."}</span>
           </div>
         )}
           </section>
@@ -716,6 +753,22 @@ function formatPeriodEstimate(periods: number, frequency: PayoffBudgetFrequency)
 
 function formatPeriodState(periods: number | null, frequency: PayoffBudgetFrequency) {
   return periods ? `${budgetFrequencyCopy[frequency].singular} ${periods}` : "Set budget";
+}
+
+function getBudgetValidationMessage(form: PayoffSettingsInput) {
+  if (parseMoneyInputLoose(form.monthlyBudget) === null) return "Enter a valid debt budget amount.";
+  if (parseMoneyInputLoose(form.emergencyReserve) === null) return "Enter a valid reserve amount.";
+  if (parseMaxAccountsInput(form.maxAccountsPerRound) === null && form.maxAccountsPerRound.trim()) {
+    return "Max accounts must be a whole number greater than zero.";
+  }
+
+  for (const [debtId, value] of Object.entries(form.manualAllocations)) {
+    if (parseMoneyInputLoose(value) === null) {
+      return `Manual allocation for ${debtId} is not a valid amount.`;
+    }
+  }
+
+  return "";
 }
 
 function payoffSettingsToForm(settings: PayoffSettings): PayoffSettingsInput {
