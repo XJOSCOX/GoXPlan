@@ -44,7 +44,9 @@ export function PaymentsPage({ debts, initialPayment, negotiations, payments, on
   const [error, setError] = useState("");
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
   const [isEditConfirmOpen, setIsEditConfirmOpen] = useState(false);
+  const [paymentToDelete, setPaymentToDelete] = useState<Payment | null>(null);
 
   useEffect(() => {
     if (!initialPayment) return;
@@ -159,6 +161,21 @@ export function PaymentsPage({ debts, initialPayment, negotiations, payments, on
     setForm({ ...form, amount: centsToInput(amountCents), principal: "", resultingBalance: "" });
   }
 
+  async function confirmDeletePayment() {
+    if (!paymentToDelete) return;
+    setIsDeleting(true);
+    setError("");
+
+    try {
+      await onDelete(paymentToDelete.id);
+      setPaymentToDelete(null);
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Could not delete payment.");
+    } finally {
+      setIsDeleting(false);
+    }
+  }
+
   return (
     <div className="page-stack payments-page">
       <section className="summary-strip payment-summary-strip">
@@ -192,6 +209,8 @@ export function PaymentsPage({ debts, initialPayment, negotiations, payments, on
           </button>
         </div>
 
+        {error && !isFormOpen && <div className="form-error">{error}</div>}
+
         {payments.length ? (
           <div className="payment-ledger">
             <div className="payment-ledger-head" aria-hidden="true">
@@ -209,15 +228,33 @@ export function PaymentsPage({ debts, initialPayment, negotiations, payments, on
                   <div className="payment-main">
                     <ReceiptText size={17} />
                     <div>
-                      <strong>{payment.debtName ?? "Removed debt"}</strong>
-                      <span>
-                        {payment.confirmationNumber ? `Confirmation ${payment.confirmationNumber}` : payment.notes || "No confirmation saved"}
-                      </span>
+                      <div className="payment-title-row">
+                        <strong>{payment.debtName ?? "Removed debt"}</strong>
+                        <span className={`payment-type-pill payment-type-${payment.paymentType.toLowerCase()}`}>
+                          {paymentTypeLabels[payment.paymentType]}
+                        </span>
+                        {payment.notes && (
+                          <span
+                            aria-label={`Notes for payment to ${payment.debtName ?? "debt"}`}
+                            className="note-tooltip payment-note-tooltip"
+                            data-tooltip={payment.notes}
+                            tabIndex={0}
+                            title={payment.notes}
+                          >
+                            !
+                          </span>
+                        )}
+                      </div>
+                      <div className="payment-meta-strip">
+                        {getPaymentMetaChips(payment).map((chip) => (
+                          <span key={chip}>{chip}</span>
+                        ))}
+                      </div>
                     </div>
                   </div>
 
                   <div className="payment-money">
-                    <span>{paymentTypeLabels[payment.paymentType]}</span>
+                    <span>Total paid</span>
                     <strong>{formatCurrency(payment.amountCents)}</strong>
                     {payment.interestAndFeesCents !== null && payment.interestAndFeesCents > 0 && (
                       <em>{formatCurrency(payment.principalCents ?? 0)} principal</em>
@@ -230,8 +267,12 @@ export function PaymentsPage({ debts, initialPayment, negotiations, payments, on
                   </div>
 
                   <div className="payment-detail">
-                    <span>Method</span>
-                    <strong>{payment.paymentMethod || "-"}</strong>
+                    <span>Fees</span>
+                    <strong>
+                      {payment.interestAndFeesCents === null || payment.interestAndFeesCents <= 0
+                        ? "-"
+                        : formatCurrency(payment.interestAndFeesCents)}
+                    </strong>
                   </div>
 
                   <div className="payment-detail">
@@ -243,7 +284,12 @@ export function PaymentsPage({ debts, initialPayment, negotiations, payments, on
                     <button className="icon-button" type="button" onClick={() => editPayment(payment)} aria-label={`Edit payment for ${payment.debtName ?? "debt"}`}>
                       <Edit3 size={15} />
                     </button>
-                    <button className="icon-button bad-entry" type="button" onClick={() => void onDelete(payment.id)} aria-label={`Delete payment for ${payment.debtName ?? "debt"}`}>
+                    <button
+                      className="icon-button bad-entry"
+                      type="button"
+                      onClick={() => setPaymentToDelete(payment)}
+                      aria-label={`Delete payment for ${payment.debtName ?? "debt"}`}
+                    >
                       <Trash2 size={15} />
                     </button>
                   </div>
@@ -463,6 +509,18 @@ export function PaymentsPage({ debts, initialPayment, negotiations, payments, on
           onConfirm={() => void savePaymentForm()}
         />
       )}
+
+      {paymentToDelete && (
+        <ConfirmDialog
+          confirmLabel="Delete payment"
+          isBusy={isDeleting}
+          message={`Delete the ${formatCurrency(paymentToDelete.amountCents)} payment for ${paymentToDelete.debtName ?? "this debt"}? The debt balance/status snapshot tied to this payment will be restored before it is removed.`}
+          title="Delete payment?"
+          tone="danger"
+          onCancel={() => setPaymentToDelete(null)}
+          onConfirm={() => void confirmDeletePayment()}
+        />
+      )}
     </div>
   );
 }
@@ -531,6 +589,14 @@ function getSuggestedPaymentAmount(debt: Debt, paymentType: PaymentType, summary
     return Math.max(0, Math.min(getRemainingCents(debt, summary), debt.settlementCents - paid));
   }
   return getDebtObligation(debt, summary, insight).cents;
+}
+
+function getPaymentMetaChips(payment: Payment) {
+  const chips: string[] = [];
+  if (payment.paymentMethod) chips.push(payment.paymentMethod);
+  if (payment.confirmationNumber) chips.push(`Confirmation ${payment.confirmationNumber}`);
+  if (payment.principalCents !== null) chips.push(`${formatCurrency(payment.principalCents)} principal`);
+  return chips.length ? chips : ["No method saved"];
 }
 
 function getRemainingCents(debt: Debt, summary: PaymentSummary) {

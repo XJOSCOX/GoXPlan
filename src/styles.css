@@ -3506,26 +3506,82 @@ button:focus-visible {
   flex: 0 0 auto;
 }
 
-.payment-main div {
+.payment-main > div {
   display: grid;
-  gap: 1px;
+  gap: 5px;
   min-width: 0;
 }
 
-.payment-main strong {
+.payment-title-row {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+  min-width: 0;
+}
+
+.payment-title-row strong {
   color: var(--text);
   font-size: 14px;
-  font-weight: 650;
+  font-weight: 620;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.payment-main span {
+.payment-type-pill {
+  align-items: center;
+  background: color-mix(in srgb, var(--surface-soft) 80%, transparent);
+  border: 1px solid var(--border);
+  border-radius: 999px;
   color: var(--muted);
-  font-size: 12px;
-  font-weight: 500;
+  display: inline-flex;
+  flex: 0 0 auto;
+  font-size: 10px;
+  font-weight: 650;
+  height: 22px;
+  padding: 0 8px;
+}
+
+.payment-type-settlement,
+.payment-type-payoff {
+  background: color-mix(in srgb, var(--success) 12%, var(--surface));
+  border-color: color-mix(in srgb, var(--success) 32%, var(--border));
+  color: var(--success);
+}
+
+.payment-type-catch_up,
+.payment-type-extra {
+  background: color-mix(in srgb, var(--warning) 12%, var(--surface));
+  border-color: color-mix(in srgb, var(--warning) 32%, var(--border));
+  color: color-mix(in srgb, var(--warning) 82%, var(--text));
+}
+
+.payment-note-tooltip {
+  flex: 0 0 auto;
+  font-size: 11px;
+  font-weight: 700;
+  height: 19px;
+  width: 19px;
+}
+
+.payment-meta-strip {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  min-width: 0;
+}
+
+.payment-meta-strip span {
+  background: color-mix(in srgb, var(--surface-soft) 58%, transparent);
+  border: 1px solid color-mix(in srgb, var(--border) 82%, transparent);
+  border-radius: 999px;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 560;
+  max-width: 190px;
   overflow: hidden;
+  padding: 3px 7px;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -3546,7 +3602,7 @@ button:focus-visible {
 .payment-money strong {
   color: var(--text);
   font-size: 15px;
-  font-weight: 650;
+  font-weight: 620;
   white-space: nowrap;
 }
 
@@ -3573,7 +3629,7 @@ button:focus-visible {
 .payment-detail strong {
   color: var(--text);
   font-size: 14px;
-  font-weight: 650;
+  font-weight: 620;
   white-space: nowrap;
 }
 
