@@ -525,6 +525,8 @@ export function App() {
       ) : page === "accounts" ? (
         <AccountsPage
           accounts={financialAccounts}
+          income={income}
+          payments={payments}
           onSave={handleSaveFinancialAccount}
           onDelete={handleDeleteFinancialAccount}
         />

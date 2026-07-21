@@ -3134,6 +3134,116 @@ button:focus-visible {
   justify-content: flex-end;
 }
 
+.account-activity {
+  border-top: 1px solid var(--border);
+  display: grid;
+  gap: 10px;
+  padding-top: 4px;
+}
+
+.account-activity-head {
+  align-items: center;
+  display: flex;
+  justify-content: space-between;
+}
+
+.account-activity-head span {
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 620;
+}
+
+.account-activity-head strong {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 560;
+}
+
+.account-activity-list {
+  display: grid;
+  gap: 7px;
+}
+
+.account-activity-item {
+  align-items: center;
+  background: color-mix(in srgb, var(--surface) 82%, transparent);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  display: grid;
+  gap: 10px;
+  grid-template-columns: 28px minmax(0, 1fr) minmax(96px, max-content);
+  min-height: 48px;
+  padding: 8px;
+}
+
+.account-activity-icon {
+  align-items: center;
+  background: var(--surface-soft);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--muted);
+  display: inline-flex;
+  height: 28px;
+  justify-content: center;
+  width: 28px;
+}
+
+.account-activity-item.in .account-activity-icon {
+  color: var(--success);
+}
+
+.account-activity-item.out .account-activity-icon {
+  color: var(--danger);
+}
+
+.account-activity-item > div {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.account-activity-item > div:last-child {
+  justify-items: end;
+  text-align: right;
+}
+
+.account-activity-item strong {
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 610;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.account-activity-item.in > div:last-child strong {
+  color: var(--success);
+}
+
+.account-activity-item.out > div:last-child strong {
+  color: var(--danger);
+}
+
+.account-activity-item span {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 520;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.account-activity-empty {
+  background: color-mix(in srgb, var(--surface-soft) 42%, transparent);
+  border: 1px dashed var(--border);
+  border-radius: 8px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 520;
+  padding: 12px;
+}
+
 .account-modal-panel {
   width: min(100%, 640px);
 }
@@ -5935,6 +6045,17 @@ button:focus-visible {
   .account-rule-grid,
   .compact-account-rules {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .account-activity-item {
+    align-items: start;
+    grid-template-columns: 28px minmax(0, 1fr);
+  }
+
+  .account-activity-item > div:last-child {
+    grid-column: 2;
+    justify-items: start;
+    text-align: left;
   }
 
   .cashflow-chart {

@@ -1,11 +1,24 @@
-import { Building2, ChartNoAxesColumnIncreasing, Edit3, Landmark, Plus, Save, Trash2, X } from "lucide-react";
-import { type FormEvent, useState } from "react";
-import type { FinancialAccount, FinancialAccountInput, FinancialAccountType } from "../../types";
+import { ArrowDownLeft, ArrowUpRight, Building2, ChartNoAxesColumnIncreasing, Edit3, Landmark, Plus, ReceiptText, Save, Trash2, X } from "lucide-react";
+import { type FormEvent, useMemo, useState } from "react";
+import type { FinancialAccount, FinancialAccountInput, FinancialAccountType, Income, Payment } from "../../types";
 
 type AccountsPageProps = {
   accounts: FinancialAccount[];
+  income: Income[];
+  payments: Payment[];
   onSave: (input: FinancialAccountInput) => Promise<void>;
   onDelete: (accountId: string) => Promise<void>;
+};
+
+type AccountActivity = {
+  id: string;
+  amountCents: number;
+  balanceAfterCents: number;
+  date: string;
+  label: string;
+  meta: string;
+  tone: "in" | "out";
+  type: "income" | "payment";
 };
 
 const emptyAccountForm: FinancialAccountInput = {
@@ -27,12 +40,13 @@ const accountTypeLabels: Record<FinancialAccountType, string> = {
   OTHER: "Other",
 };
 
-export function AccountsPage({ accounts, onSave, onDelete }: AccountsPageProps) {
+export function AccountsPage({ accounts, income, payments, onSave, onDelete }: AccountsPageProps) {
   const [form, setForm] = useState<FinancialAccountInput>(emptyAccountForm);
   const [error, setError] = useState("");
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const accountTotals = summarizeAccounts(accounts);
+  const activitiesByAccount = useMemo(() => buildAccountActivities(accounts, income, payments), [accounts, income, payments]);
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -128,7 +142,9 @@ export function AccountsPage({ accounts, onSave, onDelete }: AccountsPageProps) 
 
         {accounts.length ? (
           <div className="account-grid">
-            {accounts.map((account) => (
+            {accounts.map((account) => {
+              const activities = activitiesByAccount.get(account.id) ?? [];
+              return (
               <article className="account-card" key={account.id}>
                 <div className="account-card-head">
                   <div className="account-card-main">
@@ -213,8 +229,40 @@ export function AccountsPage({ accounts, onSave, onDelete }: AccountsPageProps) 
                 )}
 
                 {account.notes && <p>{account.notes}</p>}
+
+                <section className="account-activity">
+                  <div className="account-activity-head">
+                    <span>Recent activity</span>
+                    <strong>{activities.length ? `${activities.length} shown` : "No movement"}</strong>
+                  </div>
+
+                  {activities.length ? (
+                    <div className="account-activity-list">
+                      {activities.map((activity) => (
+                        <article className={`account-activity-item ${activity.tone}`} key={activity.id}>
+                          <span className="account-activity-icon">
+                            {activity.type === "payment" ? <ReceiptText size={14} /> : activity.tone === "in" ? <ArrowDownLeft size={14} /> : <ArrowUpRight size={14} />}
+                          </span>
+                          <div>
+                            <strong>{activity.label}</strong>
+                            <span>{activity.meta}</span>
+                          </div>
+                          <div>
+                            <strong>{formatSignedCurrency(activity.amountCents)}</strong>
+                            <span>{formatDate(activity.date)} - {formatCurrency(activity.balanceAfterCents)}</span>
+                          </div>
+                        </article>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="account-activity-empty">
+                      <span>Deposits, payouts, and payments will appear here.</span>
+                    </div>
+                  )}
+                </section>
               </article>
-            ))}
+              );
+            })}
           </div>
         ) : (
           <div className="empty-state income-empty-state">
@@ -419,6 +467,68 @@ function summarizeAccounts(accounts: FinancialAccount[]) {
   );
 }
 
+function buildAccountActivities(accounts: FinancialAccount[], income: Income[], payments: Payment[]) {
+  const activities = new Map<string, Array<Omit<AccountActivity, "balanceAfterCents">>>();
+
+  function add(accountId: string | null, activity: Omit<AccountActivity, "balanceAfterCents">) {
+    if (!accountId) return;
+    const current = activities.get(accountId) ?? [];
+    current.push(activity);
+    activities.set(accountId, current);
+  }
+
+  for (const item of income) {
+    add(item.accountId, {
+      amountCents: -item.grossAmountCents,
+      date: item.receivedAt,
+      id: `${item.id}:source`,
+      label: item.sourceType === "TOPSTEP" ? "Trading payout" : "Income withdrawn",
+      meta: item.destinationAccountName ? `To ${item.destinationAccountName}` : item.source,
+      tone: "out",
+      type: "income",
+    });
+
+    add(item.destinationAccountId, {
+      amountCents: item.netAmountCents,
+      date: item.receivedAt,
+      id: `${item.id}:destination`,
+      label: "Income deposit",
+      meta: item.accountName ? `From ${item.accountName}` : item.source,
+      tone: "in",
+      type: "income",
+    });
+  }
+
+  for (const payment of payments) {
+    add(payment.accountId, {
+      amountCents: -payment.amountCents,
+      date: payment.paidAt,
+      id: `${payment.id}:payment`,
+      label: "Debt payment",
+      meta: payment.debtName ?? "Removed debt",
+      tone: "out",
+      type: "payment",
+    });
+  }
+
+  const withBalances = new Map<string, AccountActivity[]>();
+
+  for (const account of accounts) {
+    const accountActivities = (activities.get(account.id) ?? []).sort(
+      (left, right) => new Date(right.date).getTime() - new Date(left.date).getTime(),
+    );
+    let balanceCursor = getPrimaryAccountAmount(account);
+    const recentActivities = accountActivities.slice(0, 4).map((activity) => {
+      const balanceAfterCents = balanceCursor;
+      balanceCursor -= activity.amountCents;
+      return { ...activity, balanceAfterCents };
+    });
+    withBalances.set(account.id, recentActivities);
+  }
+
+  return withBalances;
+}
+
 function getAccountIcon(accountType: FinancialAccountType) {
   if (accountType === "BANK") return <Landmark size={18} />;
   if (accountType === "TRADING") return <ChartNoAxesColumnIncreasing size={18} />;
@@ -427,6 +537,17 @@ function getAccountIcon(accountType: FinancialAccountType) {
 
 function formatCurrency(cents: number) {
   return new Intl.NumberFormat("en-US", { currency: "USD", style: "currency" }).format(cents / 100);
+}
+
+function formatSignedCurrency(cents: number) {
+  const formatted = formatCurrency(Math.abs(cents));
+  if (cents > 0) return `+${formatted}`;
+  if (cents < 0) return `-${formatted}`;
+  return formatted;
+}
+
+function formatDate(value: string) {
+  return new Intl.DateTimeFormat("en-US", { day: "numeric", month: "short" }).format(new Date(value));
 }
 
 function formatPercent(value: number) {
