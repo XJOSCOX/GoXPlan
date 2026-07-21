@@ -22,6 +22,7 @@ import {
   upsertPayment,
 } from "../../src/db/localDatabase";
 import { buildPayoffPlan } from "../../src/features/payoff/PayoffPlanPage";
+import { buildFinancialSummary } from "../../src/lib/financialSummary";
 import type { AccountMovementInput, DebtInput, FinancialAccountInput, IncomeInput, PaymentInput } from "../../src/types";
 
 const userId = "stability-user";
@@ -220,6 +221,57 @@ describe("local database stability", () => {
     await deleteAccountMovement(db, userId, adjustment.id);
     expect(getAccount(checking.id).availableBalanceCents).toBe(100000);
     expect(listAccountMovements(db, userId)).toHaveLength(0);
+  });
+
+  test("builds one financial summary across debts, cash, income, payments, and movements", async () => {
+    const checking = await upsertFinancialAccount(db, userId, bankAccountInput({ availableBalance: "1000", name: "Checking" }));
+    const savings = await upsertFinancialAccount(db, userId, bankAccountInput({ availableBalance: "100", name: "Savings" }));
+    const debt = await upsertDebt(db, userId, debtInput({ balance: "1000", settlement: "400", status: "COLLECTION" }));
+    const income = await upsertIncome(
+      db,
+      userId,
+      tradingIncomeInput({
+        accountId: "",
+        destinationAccountId: checking.id,
+        fees: "20",
+        grossAmount: "200",
+        sourceType: "OTHER",
+      }),
+    );
+
+    await upsertPayment(db, userId, paymentInput({ accountId: checking.id, amount: "100", debtId: debt.id, resultingBalance: "900" }));
+    await upsertAccountMovement(
+      db,
+      userId,
+      accountMovementInput({ amount: "25", fromAccountId: checking.id, toAccountId: savings.id }),
+    );
+    await upsertAccountMovement(
+      db,
+      userId,
+      accountMovementInput({ adjustmentAccountId: checking.id, amount: "50", movementType: "ADJUSTMENT" }),
+    );
+
+    const summary = buildFinancialSummary({
+      accountMovements: listAccountMovements(db, userId),
+      accounts: listFinancialAccounts(db, userId),
+      debts: listDebts(db, userId),
+      income: [income],
+      negotiations: [],
+      payments: listPayments(db, userId),
+    });
+
+    expect(summary.availableCashCents).toBe(123000);
+    expect(summary.currentObligationsCents).toBe(30000);
+    expect(summary.fullRemainingBalanceCents).toBe(90000);
+    expect(summary.totalIncomeNetCents).toBe(18000);
+    expect(summary.totalPaymentsCents).toBe(10000);
+    expect(summary.accountMovementSummary).toMatchObject({
+      adjustmentInCents: 5000,
+      adjustmentOutCents: 0,
+      transferVolumeCents: 2500,
+    });
+    expect(summary.netCashActivityCents).toBe(13000);
+    expect(summary.possibleSettlementSavingsCents).toBe(50000);
   });
 
   test("previews backup counts and rejects invalid backup shapes", async () => {

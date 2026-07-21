@@ -607,8 +607,10 @@ export function App() {
         />
       ) : page === "payoff" ? (
         <PayoffPlanPage
+          accountMovements={accountMovements}
           debts={debts}
           financialAccounts={financialAccounts}
+          income={income}
           negotiations={negotiations}
           payments={payments}
           settings={payoffSettings}
@@ -639,7 +641,10 @@ export function App() {
         />
       ) : (
         <DashboardPage
+          accountMovements={accountMovements}
+          accounts={financialAccounts}
           debts={debts}
+          income={income}
           negotiations={negotiations}
           payments={payments}
           user={user}

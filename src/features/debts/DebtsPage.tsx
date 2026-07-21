@@ -1,7 +1,8 @@
 import { Edit3, FileUp, Info, Plus, Save, Search, SlidersHorizontal, Trash2, X } from "lucide-react";
 import { type FormEvent, useEffect, useMemo, useState } from "react";
 import { getDebtPriorityLevel, priorityLevelRanges } from "../../lib/debtPriority";
-import { buildNegotiationInsights, getPlanningTarget, type DebtNegotiationInsight } from "../../lib/negotiationTargets";
+import { getDebtPlanningTarget, getDebtRemainingCents, getDebtSettlementSavingsCents, summarizePayments } from "../../lib/financialSummary";
+import { buildNegotiationInsights, type DebtNegotiationInsight } from "../../lib/negotiationTargets";
 import type { Debt, DebtCategory, DebtInput, DebtPriorityLevel, DebtStatus, Negotiation, Payment } from "../../types";
 
 type DebtsPageProps = {
@@ -563,37 +564,11 @@ export function DebtsPage({ debts, negotiations, payments, onImportKnownDebts, o
   );
 }
 
-function summarizePayments(payments: Payment[]) {
-  const paidByDebt = new Map<string, number>();
-  const resultingBalanceByDebt = new Map<string, { paidAt: string; amount: number }>();
-
-  for (const payment of payments) {
-    if (!payment.debtId) continue;
-    const paidAmount = payment.principalCents ?? payment.amountCents;
-    paidByDebt.set(payment.debtId, (paidByDebt.get(payment.debtId) ?? 0) + paidAmount);
-
-    if (payment.resultingBalanceCents !== null) {
-      const current = resultingBalanceByDebt.get(payment.debtId);
-      if (!current || payment.paidAt > current.paidAt) {
-        resultingBalanceByDebt.set(payment.debtId, { paidAt: payment.paidAt, amount: payment.resultingBalanceCents });
-      }
-    }
-  }
-
-  return { paidByDebt, resultingBalanceByDebt };
-}
-
 function getDebtFigures(debt: Debt, summary: ReturnType<typeof summarizePayments>, insight?: DebtNegotiationInsight) {
   const paidCents = summary.paidByDebt.get(debt.id) ?? 0;
-  const resultingBalance = summary.resultingBalanceByDebt.get(debt.id)?.amount;
-  const remainingCents = resultingBalance ?? Math.max(0, debt.balanceCents - paidCents);
-  const obligation = getPlanningTarget(debt, paidCents, remainingCents, insight);
-  const targetSavingsCents =
-    insight?.acceptedAgreementCents !== null && insight?.acceptedAgreementCents !== undefined
-      ? Math.max(0, debt.balanceCents - insight.acceptedAgreementCents)
-      : debt.settlementCents === null
-        ? 0
-        : Math.max(0, debt.balanceCents - debt.settlementCents);
+  const remainingCents = getDebtRemainingCents(debt, summary);
+  const obligation = getDebtPlanningTarget(debt, summary, insight);
+  const targetSavingsCents = getDebtSettlementSavingsCents(debt, insight);
 
   return { paidCents, payoffCents: obligation.cents, remainingCents, savingsCents: targetSavingsCents, targetLabel: obligation.label, targetSource: obligation.source };
 }

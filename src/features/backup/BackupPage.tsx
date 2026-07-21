@@ -2,6 +2,7 @@ import { CheckCircle2, DatabaseBackup, Download, FileJson, FileSpreadsheet, Merg
 import { useState } from "react";
 import { ConfirmDialog } from "../../components/ConfirmDialog";
 import { getBackupPreview, type BackupImportMode, type BackupImportSummary, type BackupPreview, type GoXPlanBackup } from "../../db/localDatabase";
+import { buildFinancialSummary } from "../../lib/financialSummary";
 import type { AccountMovement, Debt, FinancialAccount, Income, Negotiation, Payment } from "../../types";
 
 type BackupPageProps = {
@@ -532,32 +533,26 @@ function negotiationsToCsv(negotiations: Negotiation[]) {
 }
 
 function financialReportToCsv(records: Pick<BackupPageProps, "accountMovements" | "accounts" | "debts" | "income" | "negotiations" | "payments">) {
-  const totalDebt = records.debts.reduce((sum, debt) => sum + debt.balanceCents, 0);
-  const currentObligations = records.debts.reduce((sum, debt) => sum + getDebtActionAmountCents(debt), 0);
-  const totalIncome = records.income.reduce((sum, item) => sum + item.netAmountCents, 0);
-  const availableCash = records.accounts
-    .filter((account) => account.accountType !== "TRADING")
-    .reduce((sum, account) => sum + account.availableBalanceCents, 0);
-  const totalPayments = records.payments.reduce((sum, payment) => sum + payment.amountCents, 0);
-  const movementSummary = summarizeMovements(records.accountMovements);
-  const acceptedAgreements = records.negotiations.filter((negotiation) => negotiation.status === "ACCEPTED" && negotiation.finalAgreementCents !== null);
+  const summary = buildFinancialSummary(records);
+  const movementSummary = summary.accountMovementSummary;
   const rows: CsvRow[] = [
     ["GoXPlan financial report", fileDate()],
     [],
     ["Summary", "Amount"],
-    ["Current obligations", centsToDecimal(currentObligations)],
-    ["Full debt balance", centsToDecimal(totalDebt)],
-    ["Net income recorded", centsToDecimal(totalIncome)],
-    ["Available cash", centsToDecimal(availableCash)],
-    ["Payments recorded", centsToDecimal(totalPayments)],
+    ["Current obligations", centsToDecimal(summary.currentObligationsCents)],
+    ["Full debt balance", centsToDecimal(summary.fullDebtBalanceCents)],
+    ["Remaining debt balance", centsToDecimal(summary.fullRemainingBalanceCents)],
+    ["Net income recorded", centsToDecimal(summary.totalIncomeNetCents)],
+    ["Available cash", centsToDecimal(summary.availableCashCents)],
+    ["Payments recorded", centsToDecimal(summary.totalPaymentsCents)],
     ["Transfer volume", centsToDecimal(movementSummary.transferVolumeCents)],
     ["Balance adjustments net", centsToDecimal(movementSummary.adjustmentInCents - movementSummary.adjustmentOutCents)],
-    ["Accepted agreements", acceptedAgreements.length],
+    ["Accepted agreements", summary.acceptedAgreements.length],
     [],
     ["Debts by priority", "Amount", "Count"],
     ...["Emergency", "Critical", "High", "Medium", "Low"].map((level) => {
-      const debtsForLevel = records.debts.filter((debt) => getLevel(debt.priorityScore) === level);
-      return [level, centsToDecimal(debtsForLevel.reduce((sum, debt) => sum + getDebtActionAmountCents(debt), 0)), debtsForLevel.length];
+      const row = summary.priorityExposureRows.find((item) => item.level === level);
+      return [level, centsToDecimal(row?.amountCents ?? 0), row?.count ?? 0];
     }),
     [],
     ["Recent payments", "Debt", "Amount", "Date"],
@@ -583,22 +578,6 @@ function financialReportToCsv(records: Pick<BackupPageProps, "accountMovements" 
   return rows.map((row) => row.map(toCsvCell).join(",")).join("\n");
 }
 
-function summarizeMovements(movements: AccountMovement[]) {
-  return movements.reduce(
-    (summary, movement) => {
-      if (movement.fromAccountId && movement.toAccountId) {
-        summary.transferVolumeCents += movement.amountCents;
-      } else if (movement.toAccountId) {
-        summary.adjustmentInCents += movement.amountCents;
-      } else if (movement.fromAccountId) {
-        summary.adjustmentOutCents += movement.amountCents;
-      }
-      return summary;
-    },
-    { adjustmentInCents: 0, adjustmentOutCents: 0, transferVolumeCents: 0 },
-  );
-}
-
 function getLevel(score: number) {
   if (score >= 100) return "Emergency";
   if (score >= 75) return "Critical";
@@ -617,13 +596,6 @@ function nullableCentsToDecimal(cents: number | null) {
 
 function basisPointsToPercent(basisPoints: number) {
   return (basisPoints / 100).toFixed(2);
-}
-
-function getDebtActionAmountCents(debt: Debt) {
-  if (debt.settlementCents !== null) return debt.settlementCents;
-  if (debt.pastDueCents !== null) return debt.pastDueCents;
-  if (debt.minimumPaymentCents !== null) return debt.minimumPaymentCents;
-  return debt.balanceCents;
 }
 
 type CsvValue = string | number | null | undefined;

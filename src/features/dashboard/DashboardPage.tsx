@@ -2,11 +2,14 @@ import { ArrowRight, CalendarClock, CircleAlert, FileCheck2, Flag, Handshake, Pi
 import type { CSSProperties } from "react";
 import { useState } from "react";
 import { getDebtPriorityLevel, priorityLevelRanges } from "../../lib/debtPriority";
-import { buildNegotiationInsights, getPlanningTarget, type DebtNegotiationInsight } from "../../lib/negotiationTargets";
-import type { DashboardStats, Debt, Negotiation, Payment, PublicUser } from "../../types";
+import { buildFinancialSummary, getDebtObligationCents } from "../../lib/financialSummary";
+import type { AccountMovement, DashboardStats, Debt, FinancialAccount, Income, Negotiation, Payment, PublicUser } from "../../types";
 
 type DashboardPageProps = {
+  accountMovements: AccountMovement[];
+  accounts: FinancialAccount[];
   debts: Debt[];
+  income: Income[];
   negotiations: Negotiation[];
   payments: Payment[];
   user: PublicUser;
@@ -17,35 +20,36 @@ type DashboardPageProps = {
 
 const emergencyPageSize = 4;
 
-export function DashboardPage({ debts, negotiations, payments, user, stats, onOpenDebts, onOpenNegotiations }: DashboardPageProps) {
+export function DashboardPage({ accountMovements, accounts, debts, income, negotiations, payments, user, stats, onOpenDebts, onOpenNegotiations }: DashboardPageProps) {
   const [emergencyPage, setEmergencyPage] = useState(1);
-  const paymentSummary = summarizePayments(payments);
-  const negotiationInsights = buildNegotiationInsights(negotiations);
-  const totalPaid = paymentSummary.totalPrincipalCents;
-  const remainingBalance = debts.reduce((sum, debt) => sum + getRemainingCents(debt, paymentSummary), 0);
-  const obligationAmount = debts.reduce((sum, debt) => sum + getObligationCents(debt, paymentSummary, negotiationInsights.get(debt.id)), 0);
-  const potentialSavings = debts.reduce((sum, debt) => sum + getSettlementSavingsCents(debt, negotiationInsights.get(debt.id)), 0);
-  const reportedCount = debts.filter((debt) => debt.reported).length;
+  const financialSummary = buildFinancialSummary({ accountMovements, accounts, debts, income, negotiations, payments });
+  const paymentSummary = financialSummary.paymentSummary;
+  const negotiationInsights = financialSummary.negotiationInsights;
+  const totalPaid = financialSummary.totalPrincipalPaidCents;
+  const remainingBalance = financialSummary.fullRemainingBalanceCents;
+  const obligationAmount = financialSummary.currentObligationsCents;
+  const potentialSavings = financialSummary.possibleSettlementSavingsCents;
+  const reportedCount = financialSummary.reportedDebtCount;
   const obligationProgressBase = totalPaid + obligationAmount;
   const paidPercent = obligationProgressBase ? Math.min(100, Math.round((totalPaid / obligationProgressBase) * 100)) : 0;
   const topDebt = getTopDebt(debts);
   const monthlyPaymentRows = buildMonthlyPaymentRows(payments);
   const maxMonthlyPayment = Math.max(...monthlyPaymentRows.map((row) => row.total), 1);
   const negotiationAlerts = buildNegotiationAlerts(negotiations, debts);
-  const collectionCount = debts.filter((debt) => debt.status === "COLLECTION").length;
-  const pastDueCount = debts.filter((debt) => debt.status === "PAST_DUE").length;
+  const collectionCount = financialSummary.collectionDebtCount;
+  const pastDueCount = financialSummary.pastDueDebtCount;
   const emergencyDebts = debts
-    .filter((debt) => getDebtPriorityLevel(debt.priorityScore) === "Emergency" && getObligationCents(debt, paymentSummary, negotiationInsights.get(debt.id)) > 0)
+    .filter((debt) => getDebtPriorityLevel(debt.priorityScore) === "Emergency" && getDebtObligationCents(debt, paymentSummary, negotiationInsights.get(debt.id)) > 0)
     .sort((left, right) => left.priority - right.priority || right.priorityScore - left.priorityScore);
   const emergencyPages = Math.max(1, Math.ceil(emergencyDebts.length / emergencyPageSize));
   const activeEmergencyPage = Math.min(emergencyPage, emergencyPages);
   const visibleEmergencyDebts = emergencyDebts.slice((activeEmergencyPage - 1) * emergencyPageSize, activeEmergencyPage * emergencyPageSize);
   const levelRows = priorityLevelRanges
     .map((range) => {
-      const levelDebts = debts.filter((debt) => getDebtPriorityLevel(debt.priorityScore) === range.level);
-      const balance = levelDebts.reduce((sum, debt) => sum + getObligationCents(debt, paymentSummary, negotiationInsights.get(debt.id)), 0);
+      const exposure = financialSummary.priorityExposureRows.find((row) => row.level === range.level);
+      const balance = exposure?.amountCents ?? 0;
       const percent = obligationAmount ? Math.round((balance / obligationAmount) * 100) : 0;
-      return { ...range, balance, count: levelDebts.length, percent };
+      return { ...range, balance, count: exposure?.count ?? 0, percent };
     })
     .filter((row) => row.count > 0);
   const urgencyRows = levelRows.filter((row) => row.level !== "Emergency");
@@ -123,7 +127,7 @@ export function DashboardPage({ debts, negotiations, payments, user, stats, onOp
                         !
                       </span>
                     </span>
-                    <strong>{formatCurrency(getObligationCents(debt, paymentSummary, negotiationInsights.get(debt.id)))}</strong>
+                    <strong>{formatCurrency(getDebtObligationCents(debt, paymentSummary, negotiationInsights.get(debt.id)))}</strong>
                   </div>
                 ))}
               </div>
@@ -132,7 +136,7 @@ export function DashboardPage({ debts, negotiations, payments, user, stats, onOp
             <>
               <h2>{topDebt?.creditorName ?? "Start your plan"}</h2>
               <p>{topDebt ? topDebt.reason || "Review this account first." : `Welcome, ${user.firstName}. Add debts to activate the dashboard.`}</p>
-              {topDebt && <strong>{formatCurrency(getObligationCents(topDebt, paymentSummary, negotiationInsights.get(topDebt.id)))}</strong>}
+              {topDebt && <strong>{formatCurrency(getDebtObligationCents(topDebt, paymentSummary, negotiationInsights.get(topDebt.id)))}</strong>}
               <button className="primary-button compact good-entry" type="button" onClick={onOpenDebts}>
                 Open debts
                 <ArrowRight size={17} />
@@ -328,32 +332,6 @@ type NegotiationAlert = {
   tone: "danger" | "neutral" | "success" | "warning";
 };
 
-function summarizePayments(payments: Payment[]) {
-  const paidByDebt = new Map<string, number>();
-  const resultingBalanceByDebt = new Map<string, { paidAt: string; amount: number }>();
-  let totalAmountCents = 0;
-  let totalFeesCents = 0;
-  let totalPrincipalCents = 0;
-
-  for (const payment of payments) {
-    totalAmountCents += payment.amountCents;
-    totalFeesCents += payment.interestAndFeesCents ?? 0;
-    totalPrincipalCents += payment.principalCents ?? payment.amountCents;
-    if (!payment.debtId) continue;
-    const paidAmount = payment.principalCents ?? payment.amountCents;
-    paidByDebt.set(payment.debtId, (paidByDebt.get(payment.debtId) ?? 0) + paidAmount);
-
-    if (payment.resultingBalanceCents !== null) {
-      const current = resultingBalanceByDebt.get(payment.debtId);
-      if (!current || payment.paidAt > current.paidAt) {
-        resultingBalanceByDebt.set(payment.debtId, { paidAt: payment.paidAt, amount: payment.resultingBalanceCents });
-      }
-    }
-  }
-
-  return { paidByDebt, resultingBalanceByDebt, totalAmountCents, totalFeesCents, totalPrincipalCents };
-}
-
 function getTopDebt(debts: Debt[]) {
   return debts.reduce<Debt | undefined>((highest, debt) => {
     if (!highest) return debt;
@@ -361,23 +339,6 @@ function getTopDebt(debts: Debt[]) {
     if (debt.priorityScore === highest.priorityScore && debt.priority < highest.priority) return debt;
     return highest;
   }, undefined);
-}
-
-function getRemainingCents(debt: Debt, summary: ReturnType<typeof summarizePayments>) {
-  return summary.resultingBalanceByDebt.get(debt.id)?.amount ?? Math.max(0, debt.balanceCents - (summary.paidByDebt.get(debt.id) ?? 0));
-}
-
-function getObligationCents(debt: Debt, summary: ReturnType<typeof summarizePayments>, insight?: DebtNegotiationInsight) {
-  const remaining = getRemainingCents(debt, summary);
-  const paidCents = summary.paidByDebt.get(debt.id) ?? 0;
-  return getPlanningTarget(debt, paidCents, remaining, insight).cents;
-}
-
-function getSettlementSavingsCents(debt: Debt, insight?: DebtNegotiationInsight) {
-  if (insight?.acceptedAgreementCents !== null && insight?.acceptedAgreementCents !== undefined) {
-    return Math.max(0, debt.balanceCents - insight.acceptedAgreementCents);
-  }
-  return debt.settlementCents === null ? 0 : Math.max(0, debt.balanceCents - debt.settlementCents);
 }
 
 function getEmergencyNote(debt: Debt) {

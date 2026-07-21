@@ -1,10 +1,13 @@
 import { AlertTriangle, ArrowRight, CalendarClock, CheckCircle2, Route, Save, Shield, Target } from "lucide-react";
 import { type FormEvent, useEffect, useMemo, useState } from "react";
 import { getDebtPriorityLevel } from "../../lib/debtPriority";
+import { buildFinancialSummary, summarizePayments, type PaymentSummary } from "../../lib/financialSummary";
 import { buildNegotiationInsights, getNegotiationDeadlineTime, getPlanningTarget, type DebtNegotiationInsight } from "../../lib/negotiationTargets";
 import type {
+  AccountMovement,
   Debt,
   FinancialAccount,
+  Income,
   Negotiation,
   Payment,
   PaymentInput,
@@ -16,8 +19,10 @@ import type {
 } from "../../types";
 
 type PayoffPlanPageProps = {
+  accountMovements: AccountMovement[];
   debts: Debt[];
   financialAccounts: FinancialAccount[];
+  income: Income[];
   negotiations: Negotiation[];
   payments: Payment[];
   settings: PayoffSettings;
@@ -26,11 +31,6 @@ type PayoffPlanPageProps = {
   onOpenPayments: (payment?: PaymentInput) => void;
   onDirtyChange: (isDirty: boolean) => void;
   onSaveSettings: (input: PayoffSettingsInput) => Promise<void>;
-};
-
-type PaymentSummary = {
-  paidByDebt: Map<string, number>;
-  resultingBalanceByDebt: Map<string, { paidAt: string; amount: number }>;
 };
 
 type PlanDebt = Debt & {
@@ -76,7 +76,9 @@ const budgetFrequencyCopy: Record<PayoffBudgetFrequency, { estimate: string; sin
 
 export function PayoffPlanPage({
   debts,
+  accountMovements,
   financialAccounts,
+  income,
   negotiations,
   payments,
   settings,
@@ -116,13 +118,11 @@ export function PayoffPlanPage({
     return () => window.removeEventListener("beforeunload", warnBeforeUnload);
   }, [hasUnsavedChanges]);
 
-  const availableCashCents = useMemo(
-    () =>
-      financialAccounts
-        .filter((account) => account.accountType !== "TRADING")
-        .reduce((sum, account) => sum + account.availableBalanceCents, 0),
-    [financialAccounts],
+  const financialSummary = useMemo(
+    () => buildFinancialSummary({ accountMovements, accounts: financialAccounts, debts, income, negotiations, payments }),
+    [accountMovements, debts, financialAccounts, income, negotiations, payments],
   );
+  const availableCashCents = financialSummary.availableCashCents;
 
   const draftBudgetCents = parseMoneyInputLoose(form.monthlyBudget) ?? 0;
   const draftEmergencyReserveCents = parseMoneyInputLoose(form.emergencyReserve) ?? 0;
@@ -215,7 +215,7 @@ export function PayoffPlanPage({
       <section className="summary-strip payoff-summary-strip">
         <article>
           <span>Current obligations</span>
-          <strong>{formatCurrency(plan.totalCurrentTarget)}</strong>
+          <strong>{formatCurrency(financialSummary.currentObligationsCents)}</strong>
         </article>
         <article>
           <span>Recommended {frequencyCopy.thisPeriod}</span>
@@ -223,7 +223,7 @@ export function PayoffPlanPage({
         </article>
         <article>
           <span>Full debt balance</span>
-          <strong>{formatCurrency(plan.totalFullRemaining)}</strong>
+          <strong>{formatCurrency(financialSummary.fullRemainingBalanceCents)}</strong>
         </article>
         <article>
           <span>Cash after plan</span>
@@ -357,7 +357,7 @@ export function PayoffPlanPage({
             </div>
             <div>
               <span>Possible savings</span>
-              <strong>{formatCurrency(plan.possibleSavingsCents)}</strong>
+              <strong>{formatCurrency(financialSummary.possibleSettlementSavingsCents)}</strong>
             </div>
           </div>
         </aside>
@@ -593,26 +593,6 @@ export function buildPayoffPlan(
     totalFullRemaining: planDebts.reduce((sum, debt) => sum + debt.fullRemainingCents, 0),
     totalPaid: planDebts.reduce((sum, debt) => sum + debt.paidCents, 0),
   };
-}
-
-function summarizePayments(payments: Payment[]): PaymentSummary {
-  const paidByDebt = new Map<string, number>();
-  const resultingBalanceByDebt = new Map<string, { paidAt: string; amount: number }>();
-
-  for (const payment of payments) {
-    if (!payment.debtId) continue;
-    const paidAmount = payment.principalCents ?? payment.amountCents;
-    paidByDebt.set(payment.debtId, (paidByDebt.get(payment.debtId) ?? 0) + paidAmount);
-
-    if (payment.resultingBalanceCents !== null) {
-      const current = resultingBalanceByDebt.get(payment.debtId);
-      if (!current || payment.paidAt > current.paidAt) {
-        resultingBalanceByDebt.set(payment.debtId, { paidAt: payment.paidAt, amount: payment.resultingBalanceCents });
-      }
-    }
-  }
-
-  return { paidByDebt, resultingBalanceByDebt };
 }
 
 function getDebtFigures(debt: Debt, summary: PaymentSummary, insight?: DebtNegotiationInsight) {

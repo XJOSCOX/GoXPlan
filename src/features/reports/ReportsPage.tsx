@@ -1,6 +1,5 @@
 import { ArrowLeftRight, Banknote, CalendarDays, CircleDollarSign, Handshake, Landmark, ReceiptText, TrendingDown, WalletCards } from "lucide-react";
-import { getDebtPriorityLevel } from "../../lib/debtPriority";
-import { buildNegotiationInsights, getPlanningTarget, type DebtNegotiationInsight } from "../../lib/negotiationTargets";
+import { buildFinancialSummary } from "../../lib/financialSummary";
 import type { AccountMovement, Debt, FinancialAccount, Income, Negotiation, Payment } from "../../types";
 
 type ReportsPageProps = {
@@ -25,21 +24,19 @@ type ActivityItem = {
 };
 
 export function ReportsPage({ accountMovements, accounts, debts, income, negotiations, payments, onOpenIncome, onOpenPayments }: ReportsPageProps) {
-  const paymentSummary = summarizePayments(payments);
-  const negotiationInsights = buildNegotiationInsights(negotiations);
-  const movementSummary = summarizeAccountMovements(accountMovements);
-  const cashAccounts = accounts.filter((account) => account.accountType !== "TRADING");
-  const totalPaid = [...paymentSummary.paidByDebt.values()].reduce((sum, amount) => sum + amount, 0);
-  const fullRemainingBalance = debts.reduce((sum, debt) => sum + getRemainingCents(debt, paymentSummary), 0);
-  const currentObligations = debts.reduce((sum, debt) => sum + getObligationCents(debt, paymentSummary, negotiationInsights.get(debt.id)), 0);
+  const financialSummary = buildFinancialSummary({ accountMovements, accounts, debts, income, negotiations, payments });
+  const movementSummary = financialSummary.accountMovementSummary;
+  const cashAccounts = financialSummary.cashAccounts;
+  const totalPaid = financialSummary.totalPrincipalPaidCents;
+  const fullRemainingBalance = financialSummary.fullRemainingBalanceCents;
+  const currentObligations = financialSummary.currentObligationsCents;
   const startingBalance = fullRemainingBalance + totalPaid;
   const paidPercent = startingBalance ? Math.round((totalPaid / startingBalance) * 100) : 0;
-  const totalIncome = income.reduce((sum, item) => sum + item.netAmountCents, 0);
-  const availableCash = cashAccounts.reduce((sum, account) => sum + account.availableBalanceCents, 0);
-  const netCashActivity = totalIncome + movementSummary.adjustmentInCents - totalPaid - movementSummary.adjustmentOutCents;
-  const estimatedStartingCash = availableCash - netCashActivity;
-  const acceptedAgreements = buildAcceptedAgreements(negotiations, debts);
-  const acceptedSavings = acceptedAgreements.reduce((sum, item) => sum + item.savingsCents, 0);
+  const totalIncome = financialSummary.totalIncomeNetCents;
+  const availableCash = financialSummary.availableCashCents;
+  const estimatedStartingCash = financialSummary.estimatedStartingCashCents;
+  const acceptedAgreements = financialSummary.acceptedAgreements;
+  const acceptedSavings = financialSummary.acceptedAgreementSavingsCents;
   const monthlyRows = buildMonthlyRows(income, payments, accountMovements);
   const maxMonthlyAmount = Math.max(
     ...monthlyRows.flatMap((row) => [row.incomeCents + row.adjustmentInCents, row.paymentCents + row.adjustmentOutCents]),
@@ -49,7 +46,7 @@ export function ReportsPage({ accountMovements, accounts, debts, income, negotia
     (row) => row.incomeCents > 0 || row.paymentCents > 0 || row.adjustmentInCents > 0 || row.adjustmentOutCents > 0 || row.transferCents > 0,
   );
   const recentActivity = buildRecentActivity(income, payments, negotiations, accountMovements).slice(0, 10);
-  const priorityRows = buildPriorityRows(debts, paymentSummary, negotiationInsights);
+  const priorityRows = financialSummary.priorityExposureRows;
 
   return (
     <div className="page-stack reports-page">
@@ -333,89 +330,6 @@ function ReportMoneyRow({ label, signed = false, strong = false, tone, value }: 
       <strong className={tone === "negative" || value < 0 ? "negative-money" : ""}>{signed ? formatSignedCurrency(value) : formatCurrency(value)}</strong>
     </div>
   );
-}
-
-function summarizePayments(payments: Payment[]) {
-  const paidByDebt = new Map<string, number>();
-  const resultingBalanceByDebt = new Map<string, { paidAt: string; amount: number }>();
-
-  for (const payment of payments) {
-    if (!payment.debtId) continue;
-    const paidAmount = payment.principalCents ?? payment.amountCents;
-    paidByDebt.set(payment.debtId, (paidByDebt.get(payment.debtId) ?? 0) + paidAmount);
-
-    if (payment.resultingBalanceCents !== null) {
-      const current = resultingBalanceByDebt.get(payment.debtId);
-      if (!current || payment.paidAt > current.paidAt) {
-        resultingBalanceByDebt.set(payment.debtId, { paidAt: payment.paidAt, amount: payment.resultingBalanceCents });
-      }
-    }
-  }
-
-  return { paidByDebt, resultingBalanceByDebt };
-}
-
-function summarizeAccountMovements(movements: AccountMovement[]) {
-  return movements.reduce(
-    (summary, movement) => {
-      if (movement.fromAccountId && movement.toAccountId) {
-        summary.transferVolumeCents += movement.amountCents;
-      } else if (movement.toAccountId) {
-        summary.adjustmentInCents += movement.amountCents;
-      } else if (movement.fromAccountId) {
-        summary.adjustmentOutCents += movement.amountCents;
-      }
-      return summary;
-    },
-    { adjustmentInCents: 0, adjustmentOutCents: 0, transferVolumeCents: 0 },
-  );
-}
-
-function getRemainingCents(debt: Debt, summary: ReturnType<typeof summarizePayments>) {
-  return summary.resultingBalanceByDebt.get(debt.id)?.amount ?? Math.max(0, debt.balanceCents - (summary.paidByDebt.get(debt.id) ?? 0));
-}
-
-function getObligationCents(debt: Debt, summary: ReturnType<typeof summarizePayments>, insight?: DebtNegotiationInsight) {
-  const remaining = getRemainingCents(debt, summary);
-  const paidCents = summary.paidByDebt.get(debt.id) ?? 0;
-  return getPlanningTarget(debt, paidCents, remaining, insight).cents;
-}
-
-function buildAcceptedAgreements(negotiations: Negotiation[], debts: Debt[]) {
-  const debtsById = new Map(debts.map((debt) => [debt.id, debt]));
-  return negotiations
-    .filter((negotiation) => negotiation.status === "ACCEPTED" && negotiation.finalAgreementCents !== null)
-    .map((negotiation) => {
-      const debt = negotiation.debtId ? debtsById.get(negotiation.debtId) : undefined;
-      const originalCents = debt?.balanceCents ?? negotiation.balanceCents ?? 0;
-      const agreementCents = negotiation.finalAgreementCents ?? 0;
-      return {
-        agreementCents,
-        debtName: negotiation.debtName ?? debt?.creditorName ?? "Removed debt",
-        dueDate: negotiation.dueDate,
-        id: negotiation.id,
-        savingsCents: Math.max(0, originalCents - agreementCents),
-      };
-    })
-    .sort((left, right) => right.savingsCents - left.savingsCents || left.debtName.localeCompare(right.debtName));
-}
-
-function buildPriorityRows(debts: Debt[], summary: ReturnType<typeof summarizePayments>, insights: Map<string, DebtNegotiationInsight>) {
-  const rows = new Map<string, { amountCents: number; count: number; level: string }>();
-
-  for (const debt of debts) {
-    const level = getDebtPriorityLevel(debt.priorityScore);
-    const current = rows.get(level) ?? { amountCents: 0, count: 0, level };
-    rows.set(level, {
-      ...current,
-      amountCents: current.amountCents + getObligationCents(debt, summary, insights.get(debt.id)),
-      count: current.count + 1,
-    });
-  }
-
-  return ["Emergency", "Critical", "High", "Medium", "Low"]
-    .map((level) => rows.get(level))
-    .filter((row): row is { amountCents: number; count: number; level: string } => Boolean(row && row.count > 0));
 }
 
 function buildMonthlyRows(income: Income[], payments: Payment[], movements: AccountMovement[]) {
