@@ -728,6 +728,9 @@ export async function upsertFinancialAccount(db: Database, userId: string, input
   const feeBasisPoints = input.feePercent.trim() ? parsePercentToBasisPoints(input.feePercent, "Fee") : null;
 
   if (!input.name.trim()) throw new Error("Account name is required.");
+  if (existing && input.accountType === "TRADING" && existing.accountType !== "TRADING" && hasCashAccountLinks(db, userId, accountId)) {
+    throw new Error("Accounts used for cash deposits, payments, or transfers must stay bank/cash accounts.");
+  }
 
   db.run(
     `
@@ -888,66 +891,73 @@ export async function upsertIncome(db: Database, userId: string, input: IncomeIn
   }
   if (netAmountCents < 0) throw new Error("Fees and tax withholding cannot exceed gross income.");
 
-  db.run(
-    `
-      INSERT INTO income (
-        id, user_id, account_id, destination_account_id, source, source_type, amount_cents, gross_amount_cents, fees_cents, tax_withholding_cents,
-        net_amount_cents, allocated_amount_cents, topstep_account_count, topstep_copied_accounts, topstep_payout_scope,
-        topstep_selected_account, topstep_profit_per_account_cents, topstep_total_profit_cents, topstep_withdrawable_cents,
-        topstep_fee_cents, received_at, notes, created_at, updated_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-      ON CONFLICT(id) DO UPDATE SET
-        account_id = excluded.account_id,
-        destination_account_id = excluded.destination_account_id,
-        source = excluded.source,
-        source_type = excluded.source_type,
-        amount_cents = excluded.amount_cents,
-        gross_amount_cents = excluded.gross_amount_cents,
-        fees_cents = excluded.fees_cents,
-        tax_withholding_cents = excluded.tax_withholding_cents,
-        net_amount_cents = excluded.net_amount_cents,
-        allocated_amount_cents = excluded.allocated_amount_cents,
-        topstep_account_count = excluded.topstep_account_count,
-        topstep_copied_accounts = excluded.topstep_copied_accounts,
-        topstep_payout_scope = excluded.topstep_payout_scope,
-        topstep_selected_account = excluded.topstep_selected_account,
-        topstep_profit_per_account_cents = excluded.topstep_profit_per_account_cents,
-        topstep_total_profit_cents = excluded.topstep_total_profit_cents,
-        topstep_withdrawable_cents = excluded.topstep_withdrawable_cents,
-        topstep_fee_cents = excluded.topstep_fee_cents,
-        received_at = excluded.received_at,
-        notes = excluded.notes,
-        updated_at = excluded.updated_at
-    `,
-    [
-      incomeId,
-      userId,
-      accountId,
-      destinationAccountId,
-      input.source.trim(),
-      input.sourceType,
-      netAmountCents,
-      grossAmountCents,
-      feesCents,
-      taxWithholdingCents,
-      netAmountCents,
-      allocatedAmountCents,
-      topstepDetails.accountCount,
-      topstepDetails.copiedAccounts ? 1 : 0,
-      topstepDetails.payoutScope,
-      topstepDetails.selectedAccount,
-      topstepDetails.profitPerAccountCents,
-      topstepDetails.totalProfitCents,
-      topstepDetails.withdrawableCents,
-      topstepDetails.feeCents,
-      receivedAt,
-      input.notes.trim(),
-      existing?.createdAt ?? now,
-      now,
-    ],
-  );
+  db.run("BEGIN TRANSACTION");
+  try {
+    db.run(
+      `
+        INSERT INTO income (
+          id, user_id, account_id, destination_account_id, source, source_type, amount_cents, gross_amount_cents, fees_cents, tax_withholding_cents,
+          net_amount_cents, allocated_amount_cents, topstep_account_count, topstep_copied_accounts, topstep_payout_scope,
+          topstep_selected_account, topstep_profit_per_account_cents, topstep_total_profit_cents, topstep_withdrawable_cents,
+          topstep_fee_cents, received_at, notes, created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ON CONFLICT(id) DO UPDATE SET
+          account_id = excluded.account_id,
+          destination_account_id = excluded.destination_account_id,
+          source = excluded.source,
+          source_type = excluded.source_type,
+          amount_cents = excluded.amount_cents,
+          gross_amount_cents = excluded.gross_amount_cents,
+          fees_cents = excluded.fees_cents,
+          tax_withholding_cents = excluded.tax_withholding_cents,
+          net_amount_cents = excluded.net_amount_cents,
+          allocated_amount_cents = excluded.allocated_amount_cents,
+          topstep_account_count = excluded.topstep_account_count,
+          topstep_copied_accounts = excluded.topstep_copied_accounts,
+          topstep_payout_scope = excluded.topstep_payout_scope,
+          topstep_selected_account = excluded.topstep_selected_account,
+          topstep_profit_per_account_cents = excluded.topstep_profit_per_account_cents,
+          topstep_total_profit_cents = excluded.topstep_total_profit_cents,
+          topstep_withdrawable_cents = excluded.topstep_withdrawable_cents,
+          topstep_fee_cents = excluded.topstep_fee_cents,
+          received_at = excluded.received_at,
+          notes = excluded.notes,
+          updated_at = excluded.updated_at
+      `,
+      [
+        incomeId,
+        userId,
+        accountId,
+        destinationAccountId,
+        input.source.trim(),
+        input.sourceType,
+        netAmountCents,
+        grossAmountCents,
+        feesCents,
+        taxWithholdingCents,
+        netAmountCents,
+        allocatedAmountCents,
+        topstepDetails.accountCount,
+        topstepDetails.copiedAccounts ? 1 : 0,
+        topstepDetails.payoutScope,
+        topstepDetails.selectedAccount,
+        topstepDetails.profitPerAccountCents,
+        topstepDetails.totalProfitCents,
+        topstepDetails.withdrawableCents,
+        topstepDetails.feeCents,
+        receivedAt,
+        input.notes.trim(),
+        existing?.createdAt ?? now,
+        now,
+      ],
+    );
 
-  applyIncomeAccountBalanceChange(db, userId, existing, input, accountId, destinationAccountId, netAmountCents);
+    applyIncomeAccountBalanceChange(db, userId, existing, input, accountId, destinationAccountId, netAmountCents);
+    db.run("COMMIT");
+  } catch (error) {
+    db.run("ROLLBACK");
+    throw error;
+  }
 
   await saveDatabase(db);
   return findIncomeById(db, userId, incomeId)!;
@@ -955,8 +965,18 @@ export async function upsertIncome(db: Database, userId: string, input: IncomeIn
 
 export async function deleteIncome(db: Database, userId: string, incomeId: string) {
   const existing = findIncomeById(db, userId, incomeId);
-  if (existing) restoreIncomeAccountMovements(db, userId, existing);
-  db.run("DELETE FROM income WHERE id = ? AND user_id = ?", [incomeId, userId]);
+  if (!existing) return;
+
+  db.run("BEGIN TRANSACTION");
+  try {
+    restoreIncomeAccountMovements(db, userId, existing);
+    db.run("DELETE FROM income WHERE id = ? AND user_id = ?", [incomeId, userId]);
+    db.run("COMMIT");
+  } catch (error) {
+    db.run("ROLLBACK");
+    throw error;
+  }
+
   await saveDatabase(db);
 }
 
@@ -980,74 +1000,83 @@ export async function upsertPayment(db: Database, userId: string, input: Payment
   if (!input.debtId) throw new Error("Choose a debt for this payment.");
   if (!debt) throw new Error("That debt could not be found.");
   if (accountId && !account) throw new Error("Selected payment account could not be found.");
+  if (account?.accountType === "TRADING") throw new Error("Choose a bank or cash account for debt payments.");
   if (amountCents <= 0) throw new Error("Payment amount must be greater than zero.");
   if (principalCents !== null && interestAndFeesCents !== null && principalCents + interestAndFeesCents > amountCents) {
     throw new Error("Principal plus interest and fees cannot exceed the payment amount.");
   }
 
-  if (input.id) restoreDebtSnapshotFromPayment(db, userId, input.id);
-  if (existing) restorePaymentAccountMovement(db, userId, existing);
-  const restoredDebt = findDebtById(db, userId, input.debtId);
-  const debtStatusBefore = input.updateDebtStatus && (input.paymentType === "SETTLEMENT" || input.paymentType === "PAYOFF") ? restoredDebt?.status ?? null : null;
-  const debtStatusAfter = debtStatusBefore ? "SETTLED" : null;
-  const debtBalanceBefore = resultingBalanceCents !== null ? restoredDebt?.balanceCents ?? null : null;
-  const debtBalanceAfter = resultingBalanceCents;
+  db.run("BEGIN TRANSACTION");
+  try {
+    if (input.id) restoreDebtSnapshotFromPayment(db, userId, input.id);
+    if (existing) restorePaymentAccountMovement(db, userId, existing);
+    const restoredDebt = findDebtById(db, userId, input.debtId);
+    const debtStatusBefore = input.updateDebtStatus && (input.paymentType === "SETTLEMENT" || input.paymentType === "PAYOFF") ? restoredDebt?.status ?? null : null;
+    const debtStatusAfter = debtStatusBefore ? "SETTLED" : null;
+    const debtBalanceBefore = resultingBalanceCents !== null ? restoredDebt?.balanceCents ?? null : null;
+    const debtBalanceAfter = resultingBalanceCents;
 
-  db.run(
-    `
-      INSERT INTO payments (
-        id, user_id, debt_id, account_id, payment_type, amount_cents, principal_cents, interest_and_fees_cents,
-        resulting_balance_cents, confirmation_number, payment_method, debt_status_before, debt_status_after,
-        debt_balance_before_cents, debt_balance_after_cents, paid_at, notes, created_at, updated_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-      ON CONFLICT(id) DO UPDATE SET
-        debt_id = excluded.debt_id,
-        account_id = excluded.account_id,
-        payment_type = excluded.payment_type,
-        amount_cents = excluded.amount_cents,
-        principal_cents = excluded.principal_cents,
-        interest_and_fees_cents = excluded.interest_and_fees_cents,
-        resulting_balance_cents = excluded.resulting_balance_cents,
-        confirmation_number = excluded.confirmation_number,
-        payment_method = excluded.payment_method,
-        debt_status_before = excluded.debt_status_before,
-        debt_status_after = excluded.debt_status_after,
-        debt_balance_before_cents = excluded.debt_balance_before_cents,
-        debt_balance_after_cents = excluded.debt_balance_after_cents,
-        paid_at = excluded.paid_at,
-        notes = excluded.notes,
-        updated_at = excluded.updated_at
-    `,
-    [
-      paymentId,
-      userId,
-      input.debtId,
-      accountId,
-      input.paymentType,
-      amountCents,
-      principalCents,
-      interestAndFeesCents,
-      resultingBalanceCents,
-      input.confirmationNumber.trim(),
-      input.paymentMethod.trim(),
-      debtStatusBefore,
-      debtStatusAfter,
-      debtBalanceBefore,
-      debtBalanceAfter,
-      paidAt,
-      input.notes.trim(),
-      existing?.createdAt ?? now,
-      now,
-    ],
-  );
+    db.run(
+      `
+        INSERT INTO payments (
+          id, user_id, debt_id, account_id, payment_type, amount_cents, principal_cents, interest_and_fees_cents,
+          resulting_balance_cents, confirmation_number, payment_method, debt_status_before, debt_status_after,
+          debt_balance_before_cents, debt_balance_after_cents, paid_at, notes, created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ON CONFLICT(id) DO UPDATE SET
+          debt_id = excluded.debt_id,
+          account_id = excluded.account_id,
+          payment_type = excluded.payment_type,
+          amount_cents = excluded.amount_cents,
+          principal_cents = excluded.principal_cents,
+          interest_and_fees_cents = excluded.interest_and_fees_cents,
+          resulting_balance_cents = excluded.resulting_balance_cents,
+          confirmation_number = excluded.confirmation_number,
+          payment_method = excluded.payment_method,
+          debt_status_before = excluded.debt_status_before,
+          debt_status_after = excluded.debt_status_after,
+          debt_balance_before_cents = excluded.debt_balance_before_cents,
+          debt_balance_after_cents = excluded.debt_balance_after_cents,
+          paid_at = excluded.paid_at,
+          notes = excluded.notes,
+          updated_at = excluded.updated_at
+      `,
+      [
+        paymentId,
+        userId,
+        input.debtId,
+        accountId,
+        input.paymentType,
+        amountCents,
+        principalCents,
+        interestAndFeesCents,
+        resultingBalanceCents,
+        input.confirmationNumber.trim(),
+        input.paymentMethod.trim(),
+        debtStatusBefore,
+        debtStatusAfter,
+        debtBalanceBefore,
+        debtBalanceAfter,
+        paidAt,
+        input.notes.trim(),
+        existing?.createdAt ?? now,
+        now,
+      ],
+    );
 
-  if (accountId) adjustFinancialAccountBalance(db, userId, accountId, -amountCents);
+    if (accountId) adjustFinancialAccountBalance(db, userId, accountId, -amountCents);
 
-  if (input.updateDebtStatus && (input.paymentType === "SETTLEMENT" || input.paymentType === "PAYOFF")) {
-    db.run("UPDATE debts SET status = 'SETTLED', updated_at = ? WHERE id = ? AND user_id = ?", [now, input.debtId, userId]);
-  }
-  if (resultingBalanceCents !== null) {
-    db.run("UPDATE debts SET balance_cents = ?, updated_at = ? WHERE id = ? AND user_id = ?", [resultingBalanceCents, now, input.debtId, userId]);
+    if (input.updateDebtStatus && (input.paymentType === "SETTLEMENT" || input.paymentType === "PAYOFF")) {
+      db.run("UPDATE debts SET status = 'SETTLED', updated_at = ? WHERE id = ? AND user_id = ?", [now, input.debtId, userId]);
+    }
+    if (resultingBalanceCents !== null) {
+      db.run("UPDATE debts SET balance_cents = ?, updated_at = ? WHERE id = ? AND user_id = ?", [resultingBalanceCents, now, input.debtId, userId]);
+    }
+
+    db.run("COMMIT");
+  } catch (error) {
+    db.run("ROLLBACK");
+    throw error;
   }
 
   await saveDatabase(db);
@@ -1056,9 +1085,19 @@ export async function upsertPayment(db: Database, userId: string, input: Payment
 
 export async function deletePayment(db: Database, userId: string, paymentId: string) {
   const existing = findPaymentById(db, userId, paymentId);
-  if (existing) restorePaymentAccountMovement(db, userId, existing);
-  restoreDebtSnapshotFromPayment(db, userId, paymentId);
-  db.run("DELETE FROM payments WHERE id = ? AND user_id = ?", [paymentId, userId]);
+  if (!existing) return;
+
+  db.run("BEGIN TRANSACTION");
+  try {
+    restorePaymentAccountMovement(db, userId, existing);
+    restoreDebtSnapshotFromPayment(db, userId, paymentId);
+    db.run("DELETE FROM payments WHERE id = ? AND user_id = ?", [paymentId, userId]);
+    db.run("COMMIT");
+  } catch (error) {
+    db.run("ROLLBACK");
+    throw error;
+  }
+
   await saveDatabase(db);
 }
 
@@ -1657,6 +1696,20 @@ function hasLaterDebtSnapshotChange(db: Database, userId: string, debtId: string
         AND paid_at >= ?
     `,
     [userId, debtId, ignoredPaymentId, paidAt],
+  );
+
+  return Number(result[0]?.values[0]?.[0] ?? 0) > 0;
+}
+
+function hasCashAccountLinks(db: Database, userId: string, accountId: string) {
+  const result = db.exec(
+    `
+      SELECT
+        (SELECT COUNT(*) FROM income WHERE user_id = ? AND destination_account_id = ?) +
+        (SELECT COUNT(*) FROM payments WHERE user_id = ? AND account_id = ?) +
+        (SELECT COUNT(*) FROM account_movements WHERE user_id = ? AND (from_account_id = ? OR to_account_id = ?))
+    `,
+    [userId, accountId, userId, accountId, userId, accountId, accountId],
   );
 
   return Number(result[0]?.values[0]?.[0] ?? 0) > 0;

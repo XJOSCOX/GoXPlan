@@ -142,17 +142,34 @@ export function PayoffPlanPage({
   const planBudgetCents = draftBudgetCents > 0 ? draftBudgetCents : safeAvailableCash;
   const manualAllocationCents = useMemo(() => parseEditableManualAllocations(form.manualAllocations), [form.manualAllocations]);
   const negotiationInsights = useMemo(() => buildNegotiationInsights(negotiations), [negotiations]);
-  const plan = useMemo(
-    () => buildPayoffPlan(debts, payments, planBudgetCents, form.strategy, draftMaxAccountsPerRound, manualAllocationCents, negotiationInsights),
-    [debts, draftMaxAccountsPerRound, form.strategy, manualAllocationCents, negotiationInsights, payments, planBudgetCents],
-  );
   const activePeriodProgress = useMemo(
     () => buildPayoffPeriodProgress(form.budgetFrequency, planBudgetCents, payments),
     [form.budgetFrequency, payments, planBudgetCents],
   );
-  const recentMilestones = useMemo(
-    () => payoffMilestones.filter((milestone) => milestone.targetCents > 0).slice(0, 3),
-    [payoffMilestones],
+  const recommendationBudgetCents =
+    planBudgetCents > 0
+      ? getPayoffRecommendationBudgetCents({
+          periodRemainingCents: activePeriodProgress.remainingCents,
+          safeAvailableCashCents: safeAvailableCash,
+        })
+      : 0;
+  const plan = useMemo(
+    () =>
+      buildPayoffPlan(
+        debts,
+        payments,
+        recommendationBudgetCents,
+        form.strategy,
+        draftMaxAccountsPerRound,
+        manualAllocationCents,
+        negotiationInsights,
+        planBudgetCents,
+      ),
+    [debts, draftMaxAccountsPerRound, form.strategy, manualAllocationCents, negotiationInsights, payments, planBudgetCents, recommendationBudgetCents],
+  );
+  const periodHistoryRows = useMemo(
+    () => buildPeriodHistoryRows(payoffMilestones, activePeriodProgress, form.budgetFrequency),
+    [activePeriodProgress, form.budgetFrequency, payoffMilestones],
   );
 
   const recommendationDebts = plan.planDebts.filter((debt) => debt.allocationCents > 0 || hasManualAllocation(form.manualAllocations, debt.id));
@@ -169,10 +186,12 @@ export function PayoffPlanPage({
   const partiallyFundedCount = recommendationDebts.filter((debt) => debt.allocationCents > 0 && debt.targetRemainingAfterAllocationCents > 0).length;
   const recommendedCopy = hasRecommendedPayments
     ? `${fullyFundedCount} clear, ${partiallyFundedCount} partial ${frequencyCopy.thisPeriod}.`
-    : "Ready after a budget or available cash.";
+    : activePeriodProgress.isDone
+      ? `Goal met ${frequencyCopy.thisPeriod}.`
+      : "Ready after a budget or available cash.";
   const budgetValidation = getBudgetValidationMessage(form);
   const allocationWarning = allocationOverBudget
-    ? `Allocations are ${formatCurrency(allocatedNow - planBudgetCents)} above the ${budgetFrequencyLabels[form.budgetFrequency].toLowerCase()} budget.`
+    ? `Allocations are ${formatCurrency(allocatedNow - recommendationBudgetCents)} above what remains ${frequencyCopy.thisPeriod}.`
     : "";
   const budgetWarning = getPayoffBudgetWarning({
     availableCashCents,
@@ -238,16 +257,16 @@ export function PayoffPlanPage({
           <strong>{formatCurrency(financialSummary.currentObligationsCents)}</strong>
         </article>
         <article>
-          <span>Recommended {frequencyCopy.thisPeriod}</span>
+          <span>Paid {frequencyCopy.thisPeriod}</span>
+          <strong>{formatCurrency(activePeriodProgress.paidCents)}</strong>
+        </article>
+        <article>
+          <span>Recommended now</span>
           <strong>{formatCurrency(allocatedNow)}</strong>
         </article>
         <article>
-          <span>Remaining balance</span>
-          <strong>{formatCurrency(financialSummary.fullRemainingBalanceCents)}</strong>
-        </article>
-        <article>
-          <span>Cash after plan</span>
-          <strong className={cashRemaining < 0 ? "warning-text" : ""}>{formatCurrency(cashRemaining)}</strong>
+          <span>Left {frequencyCopy.thisPeriod}</span>
+          <strong>{formatCurrency(activePeriodProgress.remainingCents)}</strong>
         </article>
       </section>
 
@@ -269,7 +288,7 @@ export function PayoffPlanPage({
             <strong>{formatCurrency(planBudgetCents)}</strong>
             <div>
               <em>{formatCurrency(allocatedNow)} recommended</em>
-              <em className={cashRemaining < 0 ? "warning-text" : ""}>{formatCurrency(cashRemaining)} left</em>
+              <em className={cashRemaining < 0 ? "warning-text" : ""}>{formatCurrency(cashRemaining)} unassigned</em>
             </div>
           </section>
 
@@ -409,22 +428,6 @@ export function PayoffPlanPage({
             </div>
           </div>
 
-          {recentMilestones.length > 0 && (
-            <section className="payoff-milestone-list">
-              <span>Milestones</span>
-              {recentMilestones.map((milestone) => (
-                <article key={milestone.id}>
-                  <div>
-                    <strong>{formatPayoffPeriodRange(milestone.periodStart, milestone.periodEnd)}</strong>
-                    <em>{budgetFrequencyLabels[milestone.budgetFrequency]}</em>
-                  </div>
-                  <span className={milestone.status === "DONE" ? "milestone-status done" : "milestone-status"}>
-                    {milestone.status === "DONE" ? "Done" : `${getPercent(milestone.paidCents, milestone.targetCents)}%`}
-                  </span>
-                </article>
-              ))}
-            </section>
-          )}
         </aside>
 
         <div className="payoff-workspace-main">
@@ -439,7 +442,7 @@ export function PayoffPlanPage({
               </div>
               {planBudgetCents > 0 && (
                 <span className={allocationOverBudget ? "count-pill danger-pill" : "count-pill"}>
-                  {allocationOverBudget ? `${formatCurrency(allocatedNow - planBudgetCents)} over` : `${formatCurrency(cashRemaining)} left`}
+                  {allocationOverBudget ? `${formatCurrency(allocatedNow - recommendationBudgetCents)} over` : `${formatCurrency(cashRemaining)} unassigned`}
                 </span>
               )}
             </div>
@@ -510,6 +513,56 @@ export function PayoffPlanPage({
                     </button>
                   )}
                 </div>
+              </div>
+            )}
+          </section>
+
+          <section className="panel payoff-period-history-panel">
+            <div className="payoff-toolbar">
+              <div className="payoff-panel-heading">
+                <CalendarClock size={18} />
+                <div>
+                  <h2>Period milestones</h2>
+                  <p>Target vs paid by {frequencyCopy.singular.toLowerCase()}.</p>
+                </div>
+              </div>
+              <span className={activePeriodProgress.isDone ? "count-pill success-pill" : "count-pill"}>
+                {activePeriodProgress.isDone ? "Goal met" : `${activePeriodProgress.paidPercent}% now`}
+              </span>
+            </div>
+
+            {periodHistoryRows.length ? (
+              <div className="payoff-period-history-list">
+                {periodHistoryRows.map((row) => (
+                  <article className={`payoff-history-row ${row.status.toLowerCase()}`} key={row.key}>
+                    <div className="payoff-history-head">
+                      <div>
+                        <strong>{row.range}</strong>
+                        <span>{row.isCurrent ? "Current period" : row.completedAt ? `Completed ${formatShortDate(row.completedAt)}` : row.statusLabel}</span>
+                      </div>
+                      <em>{row.statusLabel}</em>
+                    </div>
+                    <div className="payoff-period-meter" aria-label={`${row.paidPercent}% paid for ${row.range}`}>
+                      <span style={{ width: `${row.paidPercent}%` }} />
+                    </div>
+                    <div className="payoff-history-values">
+                      <span>
+                        Paid <strong>{formatCurrency(row.paidCents)}</strong>
+                      </span>
+                      <span>
+                        Goal <strong>{formatCurrency(row.targetCents)}</strong>
+                      </span>
+                      <span>
+                        Left <strong>{formatCurrency(row.remainingCents)}</strong>
+                      </span>
+                    </div>
+                  </article>
+                ))}
+              </div>
+            ) : (
+              <div className="empty-state payoff-empty-state">
+                <strong>No milestone history yet.</strong>
+                <span>Set a budget and record payments to build period history.</span>
               </div>
             )}
           </section>
@@ -604,6 +657,75 @@ export function PayoffPlanPage({
   );
 }
 
+type PeriodHistoryRow = {
+  completedAt: string | null;
+  isCurrent: boolean;
+  key: string;
+  paidCents: number;
+  paidPercent: number;
+  range: string;
+  remainingCents: number;
+  status: "ACTIVE" | "DONE" | "SHORT";
+  statusLabel: string;
+  targetCents: number;
+};
+
+function buildPeriodHistoryRows(
+  milestones: PayoffMilestone[],
+  activePeriodProgress: ReturnType<typeof buildPayoffPeriodProgress>,
+  frequency: PayoffBudgetFrequency,
+): PeriodHistoryRow[] {
+  if (activePeriodProgress.targetCents <= 0) return [];
+
+  const rows = new Map<string, PeriodHistoryRow>();
+  const today = new Date().toISOString().slice(0, 10);
+
+  for (const milestone of milestones) {
+    if (milestone.budgetFrequency !== frequency || milestone.targetCents <= 0) continue;
+    const key = getPeriodHistoryKey(milestone.periodStart, milestone.periodEnd);
+    const status = milestone.status === "DONE" ? "DONE" : milestone.periodEnd < today ? "SHORT" : "ACTIVE";
+    rows.set(key, {
+      completedAt: milestone.completedAt,
+      isCurrent: false,
+      key,
+      paidCents: milestone.paidCents,
+      paidPercent: getPercent(milestone.paidCents, milestone.targetCents),
+      range: formatPayoffPeriodRange(milestone.periodStart, milestone.periodEnd),
+      remainingCents: Math.max(0, milestone.targetCents - milestone.paidCents),
+      status,
+      statusLabel: formatMilestoneStatus(status),
+      targetCents: milestone.targetCents,
+    });
+  }
+
+  const activeKey = getPeriodHistoryKey(activePeriodProgress.periodStart, activePeriodProgress.periodEnd);
+  const activeStatus = activePeriodProgress.isDone ? "DONE" : "ACTIVE";
+  rows.set(activeKey, {
+    completedAt: null,
+    isCurrent: true,
+    key: activeKey,
+    paidCents: activePeriodProgress.paidCents,
+    paidPercent: activePeriodProgress.paidPercent,
+    range: formatPayoffPeriodRange(activePeriodProgress.periodStart, activePeriodProgress.periodEnd),
+    remainingCents: activePeriodProgress.remainingCents,
+    status: activeStatus,
+    statusLabel: formatMilestoneStatus(activeStatus),
+    targetCents: activePeriodProgress.targetCents,
+  });
+
+  return [...rows.values()].sort((left, right) => right.key.localeCompare(left.key)).slice(0, 5);
+}
+
+function getPeriodHistoryKey(periodStart: string, periodEnd: string) {
+  return `${periodStart}:${periodEnd}`;
+}
+
+function formatMilestoneStatus(status: PeriodHistoryRow["status"]) {
+  if (status === "DONE") return "Met";
+  if (status === "SHORT") return "Short";
+  return "Active";
+}
+
 export function buildPayoffPlan(
   debts: Debt[],
   payments: Payment[],
@@ -612,8 +734,11 @@ export function buildPayoffPlan(
   maxAccountsPerRound: number | null,
   manualAllocations: Record<string, number>,
   negotiationInsights: Map<string, DebtNegotiationInsight>,
+  estimateBudgetCents = budgetCents,
 ) {
   const paymentSummary = summarizePayments(payments);
+  const normalizedBudgetCents = Math.max(0, budgetCents);
+  const normalizedEstimateBudgetCents = Math.max(0, estimateBudgetCents);
   const sortedDebts = debts
     .map((debt) => {
       const insight = negotiationInsights.get(debt.id);
@@ -646,10 +771,10 @@ export function buildPayoffPlan(
   const manualAllocationTotal = [...manualAllocationMap.values()].reduce((sum, amount) => sum + amount, 0);
 
   let cumulativePeriods = 0;
-  let availableCents = Math.max(0, budgetCents - manualAllocationTotal);
+  let availableCents = Math.max(0, normalizedBudgetCents - manualAllocationTotal);
   let allocatedAccounts = [...manualAllocationMap.values()].filter((amount) => amount > 0).length;
   const planDebts: PlanDebt[] = sortedDebts.map((debt) => {
-    const periods = budgetCents > 0 ? Math.ceil(debt.targetRemainingCents / budgetCents) : 0;
+    const periods = normalizedEstimateBudgetCents > 0 ? Math.ceil(debt.targetRemainingCents / normalizedEstimateBudgetCents) : 0;
     const manualAllocationCents = manualAllocationMap.get(debt.id);
     const canAllocate = manualAllocationCents !== undefined || maxAccountsPerRound === null || allocatedAccounts < maxAccountsPerRound;
     const allocationCents = manualAllocationCents ?? (canAllocate ? Math.max(0, Math.min(debt.targetRemainingCents, availableCents)) : 0);
@@ -660,28 +785,38 @@ export function buildPayoffPlan(
     return {
       ...debt,
       allocationCents,
-      cumulativePeriods: budgetCents > 0 ? cumulativePeriods : null,
+      cumulativePeriods: normalizedEstimateBudgetCents > 0 ? cumulativePeriods : null,
       fullRemainingAfterAllocationCents: Math.max(0, debt.fullRemainingCents - allocationCents),
       targetRemainingAfterAllocationCents: Math.max(0, debt.targetRemainingCents - allocationCents),
     };
   });
   const allocatedCents = planDebts.reduce((sum, debt) => sum + debt.allocationCents, 0);
-  const estimatedPeriods = budgetCents > 0 ? cumulativePeriods : 0;
+  const estimatedPeriods = normalizedEstimateBudgetCents > 0 ? cumulativePeriods : 0;
 
   return {
     allocatedCents,
     autoAllocationCents: Math.max(0, allocatedCents - manualAllocationTotal),
     estimatedMonths: estimatedPeriods,
     estimatedPeriods,
-    isOverBudget: allocatedCents > budgetCents,
+    isOverBudget: allocatedCents > normalizedBudgetCents,
     manualAllocationCents: manualAllocationTotal,
     planDebts,
     possibleSavingsCents: planDebts.reduce((sum, debt) => sum + getPlanSavingsCents(debt), 0),
-    remainingBudgetCents: budgetCents - allocatedCents,
+    remainingBudgetCents: normalizedBudgetCents - allocatedCents,
     totalCurrentTarget: planDebts.reduce((sum, debt) => sum + debt.targetRemainingCents, 0),
     totalFullRemaining: planDebts.reduce((sum, debt) => sum + debt.fullRemainingCents, 0),
     totalPaid: planDebts.reduce((sum, debt) => sum + debt.paidCents, 0),
   };
+}
+
+export function getPayoffRecommendationBudgetCents({
+  periodRemainingCents,
+  safeAvailableCashCents,
+}: {
+  periodRemainingCents: number;
+  safeAvailableCashCents: number;
+}) {
+  return Math.max(0, Math.min(periodRemainingCents, safeAvailableCashCents));
 }
 
 function getDebtFigures(debt: Debt, summary: PaymentSummary, insight?: DebtNegotiationInsight) {
@@ -934,6 +1069,10 @@ function getPercent(valueCents: number, targetCents: number) {
 
 function toDateInput(value: string) {
   return new Date(value).toISOString().slice(0, 10);
+}
+
+function formatShortDate(value: string) {
+  return new Intl.DateTimeFormat("en-US", { day: "numeric", month: "short" }).format(new Date(value));
 }
 
 function formatCurrency(cents: number) {

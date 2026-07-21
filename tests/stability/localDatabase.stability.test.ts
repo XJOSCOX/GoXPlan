@@ -23,7 +23,7 @@ import {
   upsertPayoffSettings,
   upsertPayment,
 } from "../../src/db/localDatabase";
-import { buildPayoffPlan } from "../../src/features/payoff/PayoffPlanPage";
+import { buildPayoffPlan, getPayoffRecommendationBudgetCents } from "../../src/features/payoff/PayoffPlanPage";
 import { buildFinancialSummary } from "../../src/lib/financialSummary";
 import { buildPayoffPeriodProgress } from "../../src/lib/payoffPeriods";
 import type { AccountMovementInput, DebtInput, FinancialAccountInput, IncomeInput, PaymentInput } from "../../src/types";
@@ -172,6 +172,36 @@ describe("local database stability", () => {
 
     await deletePayment(db, userId, payment.id);
     expect(getAccount(bank.id).availableBalanceCents).toBe(100000);
+  });
+
+  test("rejects debt payments from trading accounts", async () => {
+    const trading = await upsertFinancialAccount(db, userId, tradingAccountInput({ availableBalance: "1000" }));
+    const debt = await upsertDebt(db, userId, debtInput({ balance: "1000", status: "COLLECTION" }));
+
+    await expect(upsertPayment(db, userId, paymentInput({ accountId: trading.id, amount: "200", debtId: debt.id }))).rejects.toThrow(
+      "Choose a bank or cash account for debt payments.",
+    );
+
+    expect(getAccount(trading.id).availableBalanceCents).toBe(100000);
+  });
+
+  test("keeps linked cash accounts from being converted into trading accounts", async () => {
+    const bank = await upsertFinancialAccount(db, userId, bankAccountInput({ availableBalance: "1000", name: "Checking" }));
+    const debt = await upsertDebt(db, userId, debtInput({ balance: "1000", status: "COLLECTION" }));
+    await upsertPayment(db, userId, paymentInput({ accountId: bank.id, amount: "200", debtId: debt.id }));
+
+    await expect(
+      upsertFinancialAccount(
+        db,
+        userId,
+        tradingAccountInput({
+          id: bank.id,
+          name: "Checking",
+        }),
+      ),
+    ).rejects.toThrow("Accounts used for cash deposits, payments, or transfers must stay bank/cash accounts.");
+
+    expect(getAccount(bank.id)).toMatchObject({ accountType: "BANK", availableBalanceCents: 80000 });
   });
 
   test("restores cash account movements when transfers and adjustments are edited and deleted", async () => {
@@ -468,6 +498,12 @@ describe("local database stability", () => {
     const yearlyPlan = buildPayoffPlan(debts, [], 130000, "PRIORITY", null, {}, new Map());
     expect(yearlyPlan.estimatedPeriods).toBe(2);
     expect(yearlyPlan.estimatedMonths).toBe(2);
+  });
+
+  test("caps current payoff recommendations by safe available cash", () => {
+    expect(getPayoffRecommendationBudgetCents({ periodRemainingCents: 50000, safeAvailableCashCents: 120000 })).toBe(50000);
+    expect(getPayoffRecommendationBudgetCents({ periodRemainingCents: 50000, safeAvailableCashCents: 20000 })).toBe(20000);
+    expect(getPayoffRecommendationBudgetCents({ periodRemainingCents: 50000, safeAvailableCashCents: -1000 })).toBe(0);
   });
 
   test("tracks manual payoff allocations separately from automatic budget allocation", async () => {

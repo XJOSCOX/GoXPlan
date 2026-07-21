@@ -429,6 +429,7 @@ export function App() {
     setFinancialAccounts(listFinancialAccounts(db, user.id));
     setAccountMovements(listAccountMovements(db, user.id));
     setIncome(listIncome(db, user.id));
+    setPayments(listPayments(db, user.id));
   }
 
   async function handleSaveAccountMovement(input: AccountMovementInput) {
@@ -450,6 +451,7 @@ export function App() {
         setFinancialAccounts(listFinancialAccounts(db, user.id));
         setAccountMovements(listAccountMovements(db, user.id));
         setIncome(listIncome(db, user.id));
+        setPayments(listPayments(db, user.id));
       },
     });
   }
